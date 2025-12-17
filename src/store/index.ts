@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User, AuthState, Notification, Permohonan, StatusPermohonan } from '../types';
-import { mockPermohonan as initialPermohonan } from '../services/mockData';
+import { User, AuthState, Notification, Permohonan, StatusPermohonan, Berita } from '../types';
+import { mockPermohonan as initialPermohonan, mockBerita as initialBerita } from '../services/mockData';
 
 // Auth Store
 interface AuthStore extends AuthState {
@@ -208,3 +208,54 @@ export const useUIStore = create<UIStore>((set) => ({
     set((state) => ({ mobileMenuOpen: !state.mobileMenuOpen })),
   setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
 }));
+
+// Berita Store
+interface BeritaStore {
+  berita: Berita[];
+  addBerita: (data: Berita) => void;
+  updateBerita: (id: string, data: Partial<Berita>) => void;
+  deleteBerita: (id: string) => void;
+  getBeritaById: (id: string) => Berita | undefined;
+  getBeritaBySlug: (slug: string) => Berita | undefined;
+  getAllBerita: () => Berita[];
+  getPublishedBerita: () => Berita[];
+}
+
+export const useBeritaStore = create<BeritaStore>()(
+  persist(
+    (set, get) => ({
+      berita: initialBerita,
+      
+      addBerita: (data) =>
+        set((state) => ({
+          berita: [data, ...state.berita],
+        })),
+      
+      updateBerita: (id, data) =>
+        set((state) => ({
+          berita: state.berita.map((b) =>
+            b.id === id ? { ...b, ...data, updatedAt: new Date().toISOString() } : b
+          ),
+        })),
+      
+      deleteBerita: (id) =>
+        set((state) => ({
+          berita: state.berita.filter((b) => b.id !== id),
+        })),
+      
+      getBeritaById: (id) =>
+        get().berita.find((b) => b.id === id),
+      
+      getBeritaBySlug: (slug) =>
+        get().berita.find((b) => b.slug === slug),
+      
+      getAllBerita: () => get().berita,
+      
+      getPublishedBerita: () =>
+        get().berita.filter((b) => b.status === 'published'),
+    }),
+    {
+      name: 'berita-storage',
+    }
+  )
+);

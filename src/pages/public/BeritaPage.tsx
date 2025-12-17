@@ -12,10 +12,11 @@ import {
   Twitter,
   Copy,
   Check,
+  Image,
 } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import { KATEGORI_BERITA } from '../../constants';
-import { mockBerita } from '../../services/mockData';
+import { useBeritaStore } from '../../store';
 import { formatTanggal, formatTanggalRelatif } from '../../utils';
 
 // Berita List Page
@@ -23,13 +24,17 @@ export const BeritaPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKategori, setSelectedKategori] = useState('Semua');
 
-  const filteredBerita = mockBerita.filter((berita) => {
+  // Ambil data dari store
+  const { getPublishedBerita } = useBeritaStore();
+  const publishedBerita = getPublishedBerita();
+
+  const filteredBerita = publishedBerita.filter((berita) => {
     const matchSearch =
       berita.judul.toLowerCase().includes(searchQuery.toLowerCase()) ||
       berita.ringkasan.toLowerCase().includes(searchQuery.toLowerCase());
     const matchKategori =
       selectedKategori === 'Semua' || berita.kategori === selectedKategori;
-    return matchSearch && matchKategori && berita.status === 'published';
+    return matchSearch && matchKategori;
   });
 
   return (
@@ -108,12 +113,18 @@ export const BeritaPage: React.FC = () => {
               >
                 <Link to={`/berita/${berita.slug}`}>
                   <Card variant="hover" padding="none" className="h-full group">
-                    <div className="aspect-video overflow-hidden">
-                      <img
-                        src={berita.thumbnail}
-                        alt={berita.judul}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
+                    <div className="aspect-video overflow-hidden bg-gray-100">
+                      {berita.thumbnail ? (
+                        <img
+                          src={berita.thumbnail}
+                          alt={berita.judul}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Image className="h-12 w-12 text-gray-300" />
+                        </div>
+                      )}
                     </div>
                     <div className="p-5">
                       <div className="flex items-center gap-2 mb-3">
@@ -168,8 +179,12 @@ export const BeritaDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [copied, setCopied] = useState(false);
 
-  const berita = mockBerita.find((b) => b.slug === slug);
-  const relatedBerita = mockBerita
+  // Ambil data dari store
+  const { getBeritaBySlug, getPublishedBerita } = useBeritaStore();
+  const berita = slug ? getBeritaBySlug(slug) : undefined;
+  const publishedBerita = getPublishedBerita();
+  
+  const relatedBerita = publishedBerita
     .filter((b) => b.slug !== slug && b.kategori === berita?.kategori)
     .slice(0, 3);
 
@@ -200,12 +215,18 @@ export const BeritaDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Image */}
-      <div className="relative h-64 sm:h-80 lg:h-96">
-        <img
-          src={berita.thumbnail}
-          alt={berita.judul}
-          className="w-full h-full object-cover"
-        />
+      <div className="relative h-64 sm:h-80 lg:h-96 bg-gray-200">
+        {berita.thumbnail ? (
+          <img
+            src={berita.thumbnail}
+            alt={berita.judul}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Image className="h-20 w-20 text-gray-300" />
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
       </div>
 
@@ -213,11 +234,11 @@ export const BeritaDetailPage: React.FC = () => {
       <div className="container-custom -mt-20 relative z-10 pb-12">
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 min-w-0">
             <motion.article
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl shadow-soft p-6 lg:p-8"
+              className="bg-white rounded-2xl shadow-soft p-6 lg:p-8 overflow-hidden"
             >
               {/* Back Link */}
               <Link
@@ -243,11 +264,11 @@ export const BeritaDetailPage: React.FC = () => {
                     {formatTanggalRelatif(berita.createdAt)}
                   </span>
                 </div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4">
+                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-4 break-words">
                   {berita.judul}
                 </h1>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
                     <User className="h-5 w-5 text-gray-500" />
                   </div>
                   <div>
@@ -257,11 +278,20 @@ export const BeritaDetailPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Ringkasan */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <p className="text-gray-700 italic break-words overflow-wrap-anywhere">{berita.ringkasan}</p>
+              </div>
+
               {/* Content */}
-              <div
-                className="prose prose-lg max-w-none prose-headings:text-gray-900 prose-p:text-gray-600 prose-a:text-primary-600"
-                dangerouslySetInnerHTML={{ __html: berita.konten }}
-              />
+              <div className="prose prose-lg max-w-none prose-headings:text-gray-900 prose-p:text-gray-600 prose-a:text-primary-600">
+                <div 
+                  className="text-gray-700 leading-relaxed whitespace-pre-wrap break-words"
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                >
+                  {berita.konten}
+                </div>
+              </div>
 
               {/* Share */}
               <div className="mt-8 pt-6 border-t border-gray-200">
@@ -294,7 +324,7 @@ export const BeritaDetailPage: React.FC = () => {
           </div>
 
           {/* Sidebar */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -303,7 +333,7 @@ export const BeritaDetailPage: React.FC = () => {
             >
               {/* Related News */}
               {relatedBerita.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-soft p-6">
+                <div className="bg-white rounded-2xl shadow-soft p-6 overflow-hidden">
                   <h3 className="font-semibold text-gray-900 mb-4">
                     Berita Terkait
                   </h3>
@@ -314,13 +344,21 @@ export const BeritaDetailPage: React.FC = () => {
                         to={`/berita/${item.slug}`}
                         className="flex gap-3 group"
                       >
-                        <img
-                          src={item.thumbnail}
-                          alt={item.judul}
-                          className="w-20 h-16 object-cover rounded-lg flex-shrink-0"
-                        />
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors">
+                        <div className="w-20 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
+                          {item.thumbnail ? (
+                            <img
+                              src={item.thumbnail}
+                              alt={item.judul}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Image className="h-5 w-5 text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors break-words">
                             {item.judul}
                           </h4>
                           <p className="text-xs text-gray-400 mt-1">

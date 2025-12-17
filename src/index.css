@@ -133,6 +133,17 @@
     text-wrap: balance;
   }
 
+  /* Word break utilities */
+  .break-words {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+  }
+
   .animate-delay-100 {
     animation-delay: 100ms;
   }

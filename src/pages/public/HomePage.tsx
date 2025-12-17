@@ -10,15 +10,20 @@ import {
   Shield,
   ChevronRight,
   Star,
+  Image,
 } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import { LAYANAN_LIST, APP_NAME, DESA_NAME } from '../../constants';
-import { mockBerita, mockDashboardStats } from '../../services/mockData';
+import { mockDashboardStats } from '../../services/mockData';
+import { useBeritaStore } from '../../store';
 import { formatTanggal } from '../../utils';
 
 const HomePage: React.FC = () => {
   const featuredLayanan = LAYANAN_LIST.slice(0, 6);
-  const latestBerita = mockBerita.slice(0, 3);
+  
+  // Ambil berita dari store
+  const { getPublishedBerita } = useBeritaStore();
+  const latestBerita = getPublishedBerita().slice(0, 3);
 
   const stats = [
     { label: 'Warga Terlayani', value: '1,250+', icon: Users },
@@ -313,12 +318,18 @@ const HomePage: React.FC = () => {
               >
                 <Link to={`/berita/${berita.slug}`}>
                   <Card variant="hover" padding="none" className="h-full">
-                    <div className="aspect-video overflow-hidden">
-                      <img
-                        src={berita.thumbnail}
-                        alt={berita.judul}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
+                    <div className="aspect-video overflow-hidden bg-gray-100">
+                      {berita.thumbnail ? (
+                        <img
+                          src={berita.thumbnail}
+                          alt={berita.judul}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Image className="h-12 w-12 text-gray-300" />
+                        </div>
+                      )}
                     </div>
                     <div className="p-5">
                       <div className="flex items-center gap-2 mb-2">

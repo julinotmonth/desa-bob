@@ -29,6 +29,7 @@ const UserDashboard = lazy(() => import('./pages/user/UserDashboard'));
 const PengajuanPage = lazy(() => import('./pages/user/PengajuanPage'));
 const RiwayatPage = lazy(() => import('./pages/user/RiwayatPage').then(m => ({ default: m.RiwayatPage })));
 const RiwayatDetailPage = lazy(() => import('./pages/user/RiwayatPage').then(m => ({ default: m.RiwayatDetailPage })));
+const ProfilPage = lazy(() => import('./pages/user/ProfilPage'));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
@@ -97,6 +98,7 @@ function App() {
               <Route path="/user/pengajuan" element={<PengajuanPage />} />
               <Route path="/user/riwayat" element={<RiwayatPage />} />
               <Route path="/user/riwayat/:id" element={<RiwayatDetailPage />} />
+              <Route path="/user/profil" element={<ProfilPage />} />
             </Route>
 
             {/* Admin Routes */}

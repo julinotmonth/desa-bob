@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import {
   Search,
   Clock,
@@ -12,12 +13,13 @@ import {
   User,
   Calendar,
   FileCheck,
+  Eye,
 } from 'lucide-react';
-import { Button, Card } from '../../components/ui';
+import { Button, Card, Modal } from '../../components/ui';
 import { StatusBadge } from '../../components/ui/Badge';
 import { usePermohonanStore } from '../../store';
-import { formatTanggal, formatTanggalWaktu } from '../../utils';
-import { Permohonan, StatusPermohonan } from '../../types';
+import { formatTanggal, formatTanggalWaktu, formatFileSize } from '../../utils';
+import { Permohonan, StatusPermohonan, Dokumen } from '../../types';
 import { STATUS_CONFIG } from '../../constants';
 
 const statusIcons: Record<StatusPermohonan, React.ElementType> = {
@@ -33,6 +35,8 @@ const CekStatusPage: React.FC = () => {
   const [result, setResult] = useState<Permohonan | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<Dokumen | null>(null);
   
   const { getPermohonanByNoReg } = usePermohonanStore();
 
@@ -56,6 +60,35 @@ const CekStatusPage: React.FC = () => {
       setNotFound(true);
     }
     setIsSearching(false);
+  };
+
+  // Handler untuk download dokumen
+  const handleDownload = (doc: Dokumen) => {
+    try {
+      const link = document.createElement('a');
+      link.href = doc.url;
+      link.download = doc.nama;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Mengunduh ${doc.nama}`);
+    } catch (error) {
+      toast.error('Gagal mengunduh dokumen');
+    }
+  };
+
+  // Handler untuk preview dokumen
+  const handlePreview = (doc: Dokumen) => {
+    setPreviewDoc(doc);
+    setShowPreview(true);
+  };
+
+  // Helper untuk tipe file
+  const getFileType = (type: string): 'image' | 'pdf' | 'other' => {
+    if (type.startsWith('image/')) return 'image';
+    if (type === 'application/pdf') return 'pdf';
+    return 'other';
   };
 
   return (
@@ -206,26 +239,44 @@ const CekStatusPage: React.FC = () => {
                 {/* Download Button if Selesai */}
                 {result.status === 'selesai' && result.dokumenHasil && (
                   <div className="px-6 pb-6">
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                          <FileCheck className="h-5 w-5 text-green-600" />
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                            <FileCheck className="h-6 w-6 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-green-800">
+                              Dokumen Siap Diunduh
+                            </p>
+                            <p className="text-sm text-green-600">
+                              {result.dokumenHasil.nama}
+                            </p>
+                            {result.dokumenHasil.size && (
+                              <p className="text-xs text-green-500">
+                                {formatFileSize(result.dokumenHasil.size)}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-green-800">
-                            Dokumen Siap Diunduh
-                          </p>
-                          <p className="text-sm text-green-600">
-                            {result.dokumenHasil.nama}
-                          </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => handlePreview(result.dokumenHasil!)}
+                            leftIcon={<Eye className="h-4 w-4" />}
+                            className="border-green-300 text-green-700 hover:bg-green-100"
+                          >
+                            Preview
+                          </Button>
+                          <Button
+                            onClick={() => handleDownload(result.dokumenHasil!)}
+                            leftIcon={<Download className="h-4 w-4" />}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            Download
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        leftIcon={<Download className="h-4 w-4" />}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        Download
-                      </Button>
                     </div>
                   </div>
                 )}
@@ -350,6 +401,75 @@ const CekStatusPage: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Preview Modal */}
+      <Modal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        title={previewDoc?.nama || 'Preview Dokumen'}
+        size="full"
+      >
+        {previewDoc && (
+          <div className="space-y-4">
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-100 rounded-xl p-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-5 w-5 text-gray-500" />
+                <span className="text-sm text-gray-600 truncate">
+                  {previewDoc.size ? formatFileSize(previewDoc.size) : 'Dokumen'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownload(previewDoc)}
+                  leftIcon={<Download className="h-4 w-4" />}
+                >
+                  Download
+                </Button>
+                <a href={previewDoc.url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm">
+                    Buka Tab Baru
+                  </Button>
+                </a>
+              </div>
+            </div>
+
+            {/* Preview Content */}
+            <div className="bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
+              {getFileType(previewDoc.type) === 'image' ? (
+                <div className="flex items-center justify-center p-4 min-h-[400px] max-h-[60vh] overflow-auto">
+                  <img
+                    src={previewDoc.url}
+                    alt={previewDoc.nama}
+                    className="max-w-full h-auto rounded-lg shadow-lg"
+                    style={{ maxHeight: '55vh' }}
+                  />
+                </div>
+              ) : getFileType(previewDoc.type) === 'pdf' ? (
+                <iframe
+                  src={previewDoc.url}
+                  title={previewDoc.nama}
+                  className="w-full border-0 rounded-lg"
+                  style={{ height: '60vh', minHeight: '400px' }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 min-h-[300px]">
+                  <FileText className="h-16 w-16 text-gray-300 mb-4" />
+                  <p className="text-gray-600 mb-2">Preview tidak tersedia</p>
+                  <Button
+                    onClick={() => handleDownload(previewDoc)}
+                    leftIcon={<Download className="h-4 w-4" />}
+                  >
+                    Download
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
