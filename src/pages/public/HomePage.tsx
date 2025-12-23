@@ -282,6 +282,215 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
+      {/* Struktur Organisasi Section */}
+      <section className="py-20 bg-gradient-to-b from-white to-gray-50">
+        <div className="container-custom">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <h2 className="section-title">Struktur Organisasi Desa</h2>
+            <p className="section-subtitle mx-auto">
+              Pemerintahan {DESA_NAME} yang siap melayani masyarakat dengan sepenuh hati
+            </p>
+          </motion.div>
+
+          {/* Bagan Struktur Organisasi */}
+          <div className="max-w-6xl mx-auto">
+            {/* Kepala Desa */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="flex justify-center mb-4"
+            >
+              <div className="text-center">
+                <div className="relative inline-block">
+                  <div className="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-primary-500 shadow-xl mx-auto bg-white">
+                    <img
+                      src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=200&h=200&fit=crop&crop=face"
+                      alt="Kepala Desa"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 bg-primary-600 text-white px-4 py-2 rounded-xl shadow-md">
+                  <p className="text-xs font-medium opacity-90">Kepala Desa</p>
+                  <h3 className="font-bold text-sm md:text-base">H. Ahmad Sudrajat, S.E.</h3>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Garis ke Sekretaris */}
+            <div className="flex justify-center">
+              <div className="w-0.5 h-8 bg-gray-300"></div>
+            </div>
+
+            {/* Sekretaris Desa */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              className="flex justify-center mb-4"
+            >
+              <div className="text-center">
+                <div className="relative inline-block">
+                  <div className="w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-secondary-500 shadow-lg mx-auto bg-white">
+                    <img
+                      src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face"
+                      alt="Sekretaris Desa"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 bg-secondary-600 text-white px-4 py-2 rounded-xl shadow-md">
+                  <p className="text-xs font-medium opacity-90">Sekretaris Desa</p>
+                  <h3 className="font-bold text-sm md:text-base">Drs. Bambang Sutrisno</h3>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Garis Penghubung ke Staff */}
+            <div className="hidden md:flex justify-center mb-4">
+              <div className="relative w-full max-w-4xl h-12">
+                <div className="absolute left-1/2 -translate-x-1/2 w-0.5 h-4 bg-gray-300 top-0"></div>
+                <div className="absolute top-4 left-[8%] right-[8%] h-0.5 bg-gray-300"></div>
+                <div className="absolute top-4 left-[8%] w-0.5 h-8 bg-gray-300"></div>
+                <div className="absolute top-4 left-[27%] w-0.5 h-8 bg-gray-300"></div>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-0.5 h-8 bg-gray-300"></div>
+                <div className="absolute top-4 left-[73%] w-0.5 h-8 bg-gray-300"></div>
+                <div className="absolute top-4 right-[8%] w-0.5 h-8 bg-gray-300"></div>
+              </div>
+            </div>
+
+            {/* Kepala Urusan (Kaur) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+              className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6 mb-12"
+            >
+              {[
+                { nama: 'Siti Aminah, S.Sos', jabatan: 'Kaur Tata Usaha & Umum', foto: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop&crop=face', color: 'from-blue-500 to-blue-600' },
+                { nama: 'Eko Prasetyo, S.E.', jabatan: 'Kaur Keuangan', foto: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face', color: 'from-green-500 to-green-600' },
+                { nama: 'Sri Wahyuni, A.Md', jabatan: 'Kaur Perencanaan', foto: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=crop&crop=face', color: 'from-purple-500 to-purple-600' },
+                { nama: 'Agus Santoso', jabatan: 'Kasi Pemerintahan', foto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=face', color: 'from-orange-500 to-orange-600' },
+                { nama: 'Dewi Lestari, S.Sos', jabatan: 'Kasi Kesejahteraan', foto: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=face', color: 'from-pink-500 to-pink-600' },
+              ].map((staff, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.1 * index }}
+                  className="text-center"
+                >
+                  <div className="relative inline-block">
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-3 border-gray-200 shadow-md mx-auto bg-white hover:scale-105 transition-transform">
+                      <img
+                        src={staff.foto}
+                        alt={staff.jabatan}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                  <div className={`mt-2 bg-gradient-to-r ${staff.color} text-white px-2 py-1.5 rounded-lg shadow-sm`}>
+                    <p className="text-[10px] md:text-xs font-medium opacity-90 leading-tight">{staff.jabatan}</p>
+                    <h4 className="font-semibold text-xs md:text-sm truncate">{staff.nama}</h4>
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
+
+            {/* Divider */}
+            <div className="border-t border-gray-200 my-8"></div>
+
+            {/* Kepala Dusun */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3 }}
+            >
+              <h3 className="text-center text-lg font-semibold text-gray-900 mb-6 flex items-center justify-center gap-2">
+                <Users className="h-5 w-5 text-primary-600" />
+                Kepala Dusun
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+                {[
+                  { nama: 'Suparman', dusun: 'Dusun Mekar Jaya', rt: '4 RT', rw: '2 RW' },
+                  { nama: 'Wawan Kurniawan', dusun: 'Dusun Sumber Makmur', rt: '3 RT', rw: '1 RW' },
+                  { nama: 'Tono Sugiarto', dusun: 'Dusun Harapan Baru', rt: '5 RT', rw: '2 RW' },
+                  { nama: 'Dedi Mulyadi', dusun: 'Dusun Sejahtera', rt: '4 RT', rw: '2 RW' },
+                ].map((kadus, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.1 * index }}
+                  >
+                    <Card className="p-4 text-center hover:shadow-lg transition-shadow border-2 border-transparent hover:border-primary-200">
+                      <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <span className="text-xl md:text-2xl font-bold text-primary-600">{index + 1}</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 text-sm md:text-base">{kadus.nama}</h4>
+                      <p className="text-primary-600 text-xs md:text-sm font-medium mt-1">{kadus.dusun}</p>
+                      <div className="flex justify-center gap-2 mt-2">
+                        <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{kadus.rt}</span>
+                        <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{kadus.rw}</span>
+                      </div>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* BPD Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.4 }}
+              className="mt-12"
+            >
+              <h3 className="text-center text-lg font-semibold text-gray-900 mb-6 flex items-center justify-center gap-2">
+                <Shield className="h-5 w-5 text-secondary-600" />
+                Badan Permusyawaratan Desa (BPD)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 max-w-3xl mx-auto">
+                {[
+                  { nama: 'H. Usman Hakim', jabatan: 'Ketua BPD' },
+                  { nama: 'Slamet Riyadi', jabatan: 'Wakil Ketua BPD' },
+                  { nama: 'Hj. Nurhasanah', jabatan: 'Sekretaris BPD' },
+                ].map((bpd, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.1 * index }}
+                    className="text-center"
+                  >
+                    <Card className="p-4 bg-gradient-to-br from-secondary-50 to-white border border-secondary-100">
+                      <div className="w-12 h-12 bg-secondary-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <Users className="h-6 w-6 text-secondary-600" />
+                      </div>
+                      <p className="text-secondary-600 text-xs font-medium">{bpd.jabatan}</p>
+                      <h4 className="font-semibold text-gray-900 text-sm mt-1">{bpd.nama}</h4>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* News Section */}
       <section className="py-20 bg-gray-50">
         <div className="container-custom">

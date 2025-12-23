@@ -14,7 +14,6 @@ import { useAuthStore } from '../../store';
 
 interface RegisterFormData {
   nama: string;
-  nik: string;
   email: string;
   noHp: string;
   alamat: string;
@@ -26,7 +25,6 @@ interface RegisterFormData {
 const registerSchema = z
   .object({
     nama: z.string().min(3, 'Nama minimal 3 karakter'),
-    nik: z.string().length(16, 'NIK harus 16 digit').regex(/^\d+$/, 'NIK harus berupa angka'),
     email: z.string().email('Email tidak valid'),
     noHp: z.string().min(10, 'Nomor HP minimal 10 digit').regex(/^[0-9+]+$/, 'Nomor HP tidak valid'),
     alamat: z.string().min(10, 'Alamat minimal 10 karakter'),
@@ -58,7 +56,6 @@ const RegisterPage: React.FC = () => {
     try {
       const response = await authApi.register({
         nama: data.nama,
-        nik: data.nik,
         email: data.email,
         noHp: data.noHp,
         alamat: data.alamat,
@@ -135,15 +132,6 @@ const RegisterPage: React.FC = () => {
                 placeholder="Masukkan nama lengkap sesuai KTP"
                 error={errors.nama?.message}
                 {...register('nama')}
-              />
-
-              <Input
-                label="NIK"
-                placeholder="Masukkan 16 digit NIK"
-                maxLength={16}
-                error={errors.nik?.message}
-                helperText="NIK terdiri dari 16 digit angka"
-                {...register('nik')}
               />
 
               <div className="grid sm:grid-cols-2 gap-5">

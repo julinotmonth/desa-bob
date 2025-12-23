@@ -77,7 +77,6 @@ export const authApi = {
   
   register: (data: {
     nama: string;
-    nik: string;
     email: string;
     noHp?: string;
     alamat?: string;

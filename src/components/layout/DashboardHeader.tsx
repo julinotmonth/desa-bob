@@ -38,12 +38,12 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ title }) => {
   const { user } = useAuthStore();
   const { toggleMobileMenu, sidebarOpen } = useUIStore();
 
-  // Only show notifications for admin
   const isAdmin = user?.role === 'admin';
+  const isAuthenticated = !!user;
 
-  // Fetch notifications
+  // Fetch notifications for both admin and user
   const fetchNotifications = async () => {
-    if (!isAdmin) return;
+    if (!isAuthenticated) return;
     
     setIsLoading(true);
     try {
@@ -64,7 +64,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ title }) => {
     // Refresh every 30 seconds
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, [isAuthenticated]);
 
   const handleMarkAsRead = async (id: string) => {
     try {
@@ -138,8 +138,8 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ title }) => {
               </div>
             </div>
 
-            {/* Notifications - Only for Admin */}
-            {isAdmin && (
+            {/* Notifications - For both Admin and User */}
+            {isAuthenticated && (
               <div className="relative">
                 <button
                   onClick={() => {

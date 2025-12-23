@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import {
   ChevronRight,
@@ -12,6 +11,8 @@ import {
   Check,
   AlertCircle,
   CheckCircle,
+  Image,
+  File,
 } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import { LAYANAN_LIST, MAX_FILE_SIZE } from '../../constants';
@@ -32,6 +33,117 @@ interface UploadedFile {
   preview: string;
 }
 
+// Interface untuk menyimpan file per persyaratan
+interface DocumentFiles {
+  [key: string]: UploadedFile | null;
+}
+
+// Komponen untuk single file upload per persyaratan
+interface SingleFileUploadProps {
+  label: string;
+  file: UploadedFile | null;
+  onFileChange: (file: UploadedFile | null) => void;
+  required?: boolean;
+}
+
+const SingleFileUpload: React.FC<SingleFileUploadProps> = ({ label, file, onFileChange, required = true }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    // Validate file size
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      toast.error(`File ${selectedFile.name} terlalu besar. Maksimal 5MB.`);
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    if (!allowedTypes.includes(selectedFile.type)) {
+      toast.error('Format file tidak didukung. Gunakan JPG, PNG, atau PDF.');
+      return;
+    }
+
+    onFileChange({
+      file: selectedFile,
+      preview: URL.createObjectURL(selectedFile),
+    });
+  };
+
+  const handleRemove = () => {
+    if (file) {
+      URL.revokeObjectURL(file.preview);
+    }
+    onFileChange(null);
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+  };
+
+  const getFileIcon = () => {
+    if (!file) return <Upload className="h-8 w-8 text-gray-400" />;
+    if (file.file.type.startsWith('image/')) {
+      return <Image className="h-8 w-8 text-green-500" />;
+    }
+    return <FileText className="h-8 w-8 text-red-500" />;
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-900">{label}</span>
+          {required && <span className="text-red-500">*</span>}
+        </div>
+        {file && (
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+            <Check className="h-3 w-3 mr-1" />
+            Terupload
+          </span>
+        )}
+      </div>
+
+      {!file ? (
+        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-all">
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <Upload className="h-8 w-8 text-gray-400 mb-2" />
+            <p className="text-sm text-gray-500">
+              <span className="font-medium text-primary-600">Klik untuk upload</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG (Maks. 5MB)</p>
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            className="hidden"
+            accept=".jpg,.jpeg,.png,.pdf"
+            onChange={handleFileSelect}
+          />
+        </label>
+      ) : (
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {getFileIcon()}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{file.file.name}</p>
+              <p className="text-xs text-gray-500">{formatFileSize(file.file.size)}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleRemove}
+            className="p-2 hover:bg-gray-200 rounded-lg transition-colors ml-2"
+            title="Hapus file"
+          >
+            <X className="h-4 w-4 text-gray-500" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PengajuanPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -45,7 +157,8 @@ const PengajuanPage: React.FC = () => {
   const [selectedLayanan, setSelectedLayanan] = useState<Layanan | null>(
     initialLayananId ? LAYANAN_LIST.find((l) => l.id === Number(initialLayananId)) || null : null
   );
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  // State untuk menyimpan file per persyaratan
+  const [documentFiles, setDocumentFiles] = useState<DocumentFiles>({});
   const [keterangan, setKeterangan] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -66,39 +179,35 @@ const PengajuanPage: React.FC = () => {
     fetchLayanan();
   }, []);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
+  // Reset document files when layanan changes
+  useEffect(() => {
+    setDocumentFiles({});
+  }, [selectedLayanan?.id]);
+
+  // Handler untuk update file per persyaratan
+  const handleFileChange = (persyaratan: string, file: UploadedFile | null) => {
+    setDocumentFiles((prev) => ({
+      ...prev,
+      [persyaratan]: file,
     }));
-    setUploadedFiles((prev) => [...prev, ...newFiles]);
-  }, []);
+  };
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png'],
-      'application/pdf': ['.pdf'],
-    },
-    maxSize: MAX_FILE_SIZE,
-    onDropRejected: (rejectedFiles) => {
-      rejectedFiles.forEach((file) => {
-        if (file.errors.some((e) => e.code === 'file-too-large')) {
-          toast.error(`File ${file.file.name} terlalu besar. Maksimal 5MB.`);
-        } else {
-          toast.error(`File ${file.file.name} tidak didukung.`);
-        }
-      });
-    },
-  });
+  // Cek apakah semua persyaratan sudah diupload
+  const isAllDocumentsUploaded = () => {
+    if (!selectedLayanan) return false;
+    return selectedLayanan.persyaratan.every((p) => documentFiles[p] !== null && documentFiles[p] !== undefined);
+  };
 
-  const removeFile = (index: number) => {
-    setUploadedFiles((prev) => {
-      const newFiles = [...prev];
-      URL.revokeObjectURL(newFiles[index].preview);
-      newFiles.splice(index, 1);
-      return newFiles;
-    });
+  // Hitung jumlah dokumen yang sudah diupload
+  const getUploadedCount = () => {
+    return Object.values(documentFiles).filter((f) => f !== null).length;
+  };
+
+  // Get all uploaded files as array
+  const getAllUploadedFiles = () => {
+    return Object.entries(documentFiles)
+      .filter(([_, file]) => file !== null)
+      .map(([persyaratan, file]) => ({ persyaratan, ...file! }));
   };
 
   const handleNext = () => {
@@ -106,9 +215,12 @@ const PengajuanPage: React.FC = () => {
       toast.error('Pilih layanan terlebih dahulu');
       return;
     }
-    if (currentStep === 3 && uploadedFiles.length === 0) {
-      toast.error('Upload minimal 1 dokumen');
-      return;
+    if (currentStep === 3) {
+      if (!isAllDocumentsUploaded()) {
+        const missing = selectedLayanan?.persyaratan.filter((p) => !documentFiles[p]) || [];
+        toast.error(`Lengkapi dokumen: ${missing.join(', ')}`);
+        return;
+      }
     }
     setCurrentStep((prev) => Math.min(prev + 1, 4));
   };
@@ -132,9 +244,11 @@ const PengajuanPage: React.FC = () => {
       formData.append('noHpPemohon', user.noHp || '');
       formData.append('alamatPemohon', user.alamat || '');
       
-      // Add files
+      // Add files dengan nama persyaratan
+      const uploadedFiles = getAllUploadedFiles();
       uploadedFiles.forEach((item) => {
         formData.append('dokumen', item.file);
+        formData.append('dokumenLabel', item.persyaratan);
       });
 
       const response = await permohonanApi.create(formData);
@@ -319,63 +433,79 @@ const PengajuanPage: React.FC = () => {
             {currentStep === 3 && (
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Dokumen</h2>
-                <p className="text-gray-500 mb-4">Upload dokumen persyaratan berikut:</p>
+                <p className="text-gray-500 mb-4">
+                  Upload dokumen persyaratan berikut ({getUploadedCount()}/{selectedLayanan?.persyaratan.length || 0} dokumen)
+                </p>
 
-                {/* Persyaratan */}
-                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
+                {/* Progress Bar */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-gray-500">Progress Upload</span>
+                    <span className="font-medium text-primary-600">
+                      {getUploadedCount()}/{selectedLayanan?.persyaratan.length || 0}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${((getUploadedCount() / (selectedLayanan?.persyaratan.length || 1)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
                   <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-yellow-800 mb-2">Persyaratan {selectedLayanan?.nama}:</p>
-                      <ul className="text-sm text-yellow-700 space-y-1">
-                        {selectedLayanan?.persyaratan.map((p, i) => (
-                          <li key={i}>• {p}</li>
-                        ))}
+                    <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-700">
+                      <p className="font-medium mb-1">Petunjuk Upload:</p>
+                      <ul className="space-y-1">
+                        <li>• Format yang didukung: PDF, JPG, PNG</li>
+                        <li>• Ukuran maksimal: 5MB per file</li>
+                        <li>• Pastikan dokumen terlihat jelas dan tidak terpotong</li>
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                {/* Dropzone */}
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                    isDragActive
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <input {...getInputProps()} />
-                  <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">
-                    {isDragActive ? 'Lepaskan file di sini' : 'Drag & drop file atau klik untuk memilih'}
-                  </p>
-                  <p className="text-sm text-gray-400">PDF, JPG, PNG (Maks. 5MB per file)</p>
+                {/* Individual Upload Fields */}
+                <div className="space-y-4">
+                  {selectedLayanan?.persyaratan.map((persyaratan, index) => (
+                    <SingleFileUpload
+                      key={index}
+                      label={persyaratan}
+                      file={documentFiles[persyaratan] || null}
+                      onFileChange={(file) => handleFileChange(persyaratan, file)}
+                      required={true}
+                    />
+                  ))}
                 </div>
 
-                {/* Uploaded Files */}
-                {uploadedFiles.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    {uploadedFiles.map((item, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-gray-500" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{item.file.name}</p>
-                            <p className="text-xs text-gray-500">{formatFileSize(item.file.size)}</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeFile(index)}
-                          className="p-1 hover:bg-gray-200 rounded"
+                {/* Status Summary */}
+                {selectedLayanan && selectedLayanan.persyaratan.length > 0 && (
+                  <div className="mt-6 p-4 rounded-xl bg-gray-50">
+                    <p className="text-sm font-medium text-gray-700 mb-3">Status Dokumen:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLayanan.persyaratan.map((p, i) => (
+                        <span
+                          key={i}
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            documentFiles[p]
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-200 text-gray-600'
+                          }`}
                         >
-                          <X className="h-4 w-4 text-gray-500" />
-                        </button>
-                      </div>
-                    ))}
+                          {documentFiles[p] ? (
+                            <Check className="h-3 w-3 mr-1" />
+                          ) : (
+                            <span className="w-3 h-3 mr-1 rounded-full border border-gray-400" />
+                          )}
+                          {p}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -400,11 +530,23 @@ const PengajuanPage: React.FC = () => {
                   </div>
 
                   <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-sm text-gray-500 mb-2">Dokumen ({uploadedFiles.length} file)</p>
-                    <div className="space-y-1">
-                      {uploadedFiles.map((item, index) => (
-                        <p key={index} className="text-sm text-gray-700">• {item.file.name}</p>
-                      ))}
+                    <p className="text-sm text-gray-500 mb-2">Dokumen ({getUploadedCount()} file)</p>
+                    <div className="space-y-2">
+                      {selectedLayanan?.persyaratan.map((persyaratan, index) => {
+                        const file = documentFiles[persyaratan];
+                        return (
+                          <div key={index} className="flex items-center gap-2">
+                            {file ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <X className="h-4 w-4 text-red-500" />
+                            )}
+                            <span className="text-sm text-gray-700">
+                              {persyaratan}: {file ? file.file.name : 'Belum diupload'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 

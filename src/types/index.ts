@@ -1,7 +1,7 @@
 // User Types
 export interface User {
   id: string;
-  nik: string;
+  nik?: string;
   nama: string;
   email: string;
   noHp: string;
@@ -132,7 +132,6 @@ export interface LoginFormData {
 
 export interface RegisterFormData {
   nama: string;
-  nik: string;
   email: string;
   noHp: string;
   alamat: string;
