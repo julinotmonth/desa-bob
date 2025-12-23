@@ -141,7 +141,7 @@ const KontakPage: React.FC = () => {
 
               <Card padding="none" className="overflow-hidden">
                 <iframe
-                  src={`https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15819.27!2d${CONTACT_INFO.koordinat.lng}!3d${CONTACT_INFO.koordinat.lat}!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNsKwMzcnMTAuMiJTIDExMsKwMzknMDQuNyJF!5e0!3m2!1sen!2sid!4v1234567890`}
+                  src={`https://www.google.com/maps?q=${CONTACT_INFO.koordinat.lat},${CONTACT_INFO.koordinat.lng}&z=17&output=embed`}
                   width="100%"
                   height="250"
                   style={{ border: 0 }}

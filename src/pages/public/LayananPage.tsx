@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -16,11 +16,13 @@ import {
   HandHeart,
   Shield,
   Filter,
+  Loader2,
 } from 'lucide-react';
 import { Button, Card, Input } from '../../components/ui';
 import { LAYANAN_LIST } from '../../constants';
 import { useAuthStore } from '../../store';
 import { Layanan } from '../../types';
+import { layananApi } from '../../services/api';
 
 const iconMap: Record<string, React.ElementType> = {
   Home,
@@ -38,12 +40,31 @@ const iconMap: Record<string, React.ElementType> = {
 const LayananPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKategori, setSelectedKategori] = useState<string>('Semua');
+  const [layananList, setLayananList] = useState<Layanan[]>(LAYANAN_LIST);
+  const [isLoading, setIsLoading] = useState(true);
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
 
-  const kategoris = ['Semua', ...new Set(LAYANAN_LIST.map((l) => l.kategori))];
+  // Fetch layanan from API
+  useEffect(() => {
+    const fetchLayanan = async () => {
+      try {
+        const response = await layananApi.getAll();
+        if (response.data.success && response.data.data.length > 0) {
+          setLayananList(response.data.data);
+        }
+      } catch (error) {
+        console.log('Using fallback layanan data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLayanan();
+  }, []);
 
-  const filteredLayanan = LAYANAN_LIST.filter((layanan) => {
+  const kategoris = ['Semua', ...new Set(layananList.map((l) => l.kategori))];
+
+  const filteredLayanan = layananList.filter((layanan) => {
     const matchSearch =
       layanan.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
       layanan.deskripsi.toLowerCase().includes(searchQuery.toLowerCase());

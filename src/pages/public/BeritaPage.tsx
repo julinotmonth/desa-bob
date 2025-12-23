@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -13,28 +13,66 @@ import {
   Copy,
   Check,
   Image,
+  Loader2,
+  FileText,
 } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import { KATEGORI_BERITA } from '../../constants';
 import { useBeritaStore } from '../../store';
 import { formatTanggal, formatTanggalRelatif } from '../../utils';
+import { beritaApi, getApiBaseUrl } from '../../services/api';
+import { Berita } from '../../types';
 
 // Berita List Page
 export const BeritaPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKategori, setSelectedKategori] = useState('Semua');
+  const [beritaList, setBeritaList] = useState<Berita[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Ambil data dari store
+  // Fallback ke store - hanya yang published
   const { getPublishedBerita } = useBeritaStore();
-  const publishedBerita = getPublishedBerita();
 
-  const filteredBerita = publishedBerita.filter((berita) => {
+  // Fetch berita from API
+  useEffect(() => {
+    const fetchBerita = async () => {
+      setIsLoading(true);
+      try {
+        const response = await beritaApi.getPublished({
+          kategori: selectedKategori !== 'Semua' ? selectedKategori : undefined,
+          search: searchQuery || undefined,
+          limit: 100, // Get more items
+        });
+        
+        if (response.data.success) {
+          // Map thumbnail URL
+          const beritaWithUrls = response.data.data.map((b: any) => ({
+            ...b,
+            thumbnail: b.thumbnail?.startsWith('http') 
+              ? b.thumbnail 
+              : b.thumbnail 
+                ? `${getApiBaseUrl()}${b.thumbnail}`
+                : null,
+          }));
+          setBeritaList(beritaWithUrls);
+        }
+      } catch (error) {
+        console.log('Using fallback berita data from store');
+        // Fallback ke store - filter yang published saja
+        const storeBerita = getPublishedBerita();
+        setBeritaList(storeBerita);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBerita();
+  }, [selectedKategori, searchQuery]);
+
+  const filteredBerita = beritaList.filter((berita) => {
     const matchSearch =
       berita.judul.toLowerCase().includes(searchQuery.toLowerCase()) ||
       berita.ringkasan.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchKategori =
-      selectedKategori === 'Semua' || berita.kategori === selectedKategori;
-    return matchSearch && matchKategori;
+    return matchSearch;
   });
 
   return (
@@ -97,76 +135,92 @@ export const BeritaPage: React.FC = () => {
             ))}
           </motion.div>
 
-          {/* Results */}
-          <p className="text-gray-500 mb-6">
-            Menampilkan {filteredBerita.length} berita
-          </p>
-
-          {/* Berita Grid */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredBerita.map((berita, index) => (
-              <motion.div
-                key={berita.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Link to={`/berita/${berita.slug}`}>
-                  <Card variant="hover" padding="none" className="h-full group">
-                    <div className="aspect-video overflow-hidden bg-gray-100">
-                      {berita.thumbnail ? (
-                        <img
-                          src={berita.thumbnail}
-                          alt={berita.judul}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Image className="h-12 w-12 text-gray-300" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="px-2.5 py-1 bg-secondary-100 text-secondary-700 text-xs font-medium rounded-lg">
-                          {berita.kategori}
-                        </span>
-                        <span className="text-gray-400 text-xs flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {formatTanggal(berita.createdAt, 'dd MMM yyyy')}
-                        </span>
-                      </div>
-                      <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-secondary-600 transition-colors">
-                        {berita.judul}
-                      </h3>
-                      <p className="text-gray-500 text-sm line-clamp-3">
-                        {berita.ringkasan}
-                      </p>
-                      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-                        <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                          <User className="h-4 w-4 text-gray-500" />
-                        </div>
-                        <span className="text-sm text-gray-500">
-                          {berita.penulis}
-                        </span>
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-
-          {filteredBerita.length === 0 && (
-            <div className="text-center py-12">
-              <Search className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Berita Tidak Ditemukan
-              </h3>
-              <p className="text-gray-500">
-                Coba ubah kata kunci pencarian atau filter kategori.
-              </p>
+          {/* Loading State */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-secondary-600" />
+              <span className="ml-3 text-gray-500">Memuat berita...</span>
             </div>
+          ) : (
+            <>
+              {/* Results */}
+              <p className="text-gray-500 mb-6">
+                Menampilkan {filteredBerita.length} berita
+              </p>
+
+              {/* Berita Grid */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredBerita.map((berita, index) => (
+                  <motion.div
+                    key={berita.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Link to={`/berita/${berita.slug}`}>
+                      <Card variant="hover" padding="none" className="h-full group">
+                        <div className="aspect-video overflow-hidden bg-gray-100">
+                          {berita.thumbnail ? (
+                            <img
+                              src={berita.thumbnail}
+                              alt={berita.judul}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).parentElement!.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary-100 to-secondary-200"><svg class="h-12 w-12 text-secondary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-secondary-100 to-secondary-200">
+                              <Image className="h-12 w-12 text-secondary-400" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="px-2.5 py-1 bg-secondary-100 text-secondary-700 text-xs font-medium rounded-lg">
+                              {berita.kategori}
+                            </span>
+                            <span className="text-gray-400 text-xs flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {formatTanggal(berita.createdAt, 'dd MMM yyyy')}
+                            </span>
+                          </div>
+                          <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-secondary-600 transition-colors">
+                            {berita.judul}
+                          </h3>
+                          <p className="text-gray-500 text-sm line-clamp-3">
+                            {berita.ringkasan}
+                          </p>
+                          <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                              <User className="h-4 w-4 text-gray-500" />
+                            </div>
+                            <span className="text-sm text-gray-500">
+                              {berita.penulis}
+                            </span>
+                          </div>
+                        </div>
+                      </Card>
+                    </Link>
+                  </motion.div>
+                ))}
+              </div>
+
+              {filteredBerita.length === 0 && (
+                <div className="text-center py-12">
+                  <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Belum Ada Berita
+                  </h3>
+                  <p className="text-gray-500">
+                    {searchQuery || selectedKategori !== 'Semua' 
+                      ? 'Coba ubah kata kunci pencarian atau filter kategori.'
+                      : 'Berita akan ditampilkan di sini setelah dipublikasikan.'}
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -178,21 +232,76 @@ export const BeritaPage: React.FC = () => {
 export const BeritaDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const [copied, setCopied] = useState(false);
+  const [berita, setBerita] = useState<Berita | null>(null);
+  const [relatedBerita, setRelatedBerita] = useState<Berita[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Ambil data dari store
+  // Fallback ke store
   const { getBeritaBySlug, getPublishedBerita } = useBeritaStore();
-  const berita = slug ? getBeritaBySlug(slug) : undefined;
-  const publishedBerita = getPublishedBerita();
-  
-  const relatedBerita = publishedBerita
-    .filter((b) => b.slug !== slug && b.kategori === berita?.kategori)
-    .slice(0, 3);
+  const storeBerita = slug ? getBeritaBySlug(slug) : undefined;
+  const storePublished = getPublishedBerita();
+
+  // Fetch berita detail from API
+  useEffect(() => {
+    const fetchBerita = async () => {
+      if (!slug) return;
+      
+      try {
+        const response = await beritaApi.getBySlug(slug);
+        if (response.data.success) {
+          const data = response.data.data;
+          const beritaData: Berita = {
+            ...data,
+            thumbnail: data.thumbnail?.startsWith('http') 
+              ? data.thumbnail 
+              : data.thumbnail 
+                ? `${getApiBaseUrl()}${data.thumbnail}`
+                : '',
+          };
+          setBerita(beritaData);
+          
+          // Set related berita
+          if (data.related) {
+            setRelatedBerita(data.related.map((r: any) => ({
+              ...r,
+              thumbnail: r.thumbnail?.startsWith('http') 
+                ? r.thumbnail 
+                : r.thumbnail 
+                  ? `${getApiBaseUrl()}${r.thumbnail}`
+                  : '',
+            })));
+          }
+        }
+      } catch (error) {
+        console.log('Using fallback berita data');
+        if (storeBerita) {
+          setBerita(storeBerita);
+          setRelatedBerita(
+            storePublished
+              .filter((b) => b.slug !== slug && b.kategori === storeBerita.kategori)
+              .slice(0, 3)
+          );
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBerita();
+  }, [slug]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      </div>
+    );
+  }
 
   if (!berita) {
     return (

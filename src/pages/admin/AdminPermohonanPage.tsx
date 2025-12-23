@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
@@ -20,6 +20,7 @@ import {
   FileImage,
   File,
   ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { Button, Card, Modal } from '../../components/ui';
 import { StatusBadge } from '../../components/ui/Badge';
@@ -28,6 +29,7 @@ import { useAuthStore, usePermohonanStore } from '../../store';
 import { formatTanggal, formatTanggalWaktu, formatFileSize } from '../../utils';
 import { STATUS_CONFIG, MAX_FILE_SIZE } from '../../constants';
 import { StatusPermohonan, Dokumen } from '../../types';
+import { permohonanApi, getApiBaseUrl } from '../../services/api';
 
 const statusIcons: Record<StatusPermohonan, React.ElementType> = {
   diajukan: Clock,
@@ -53,16 +55,115 @@ const FileIcon: React.FC<{ type: string; className?: string }> = ({ type, classN
 export const AdminPermohonanPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const { getAllPermohonan } = usePermohonanStore();
-  const allPermohonan = getAllPermohonan();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [permohonanList, setPermohonanList] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredPermohonan = allPermohonan.filter((p) => {
-    const matchSearch =
-      p.noRegistrasi.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.layananNama.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.userName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchStatus = !filterStatus || p.status === filterStatus;
-    return matchSearch && matchStatus;
+  // Log when component mounts
+  useEffect(() => {
+    console.log('AdminPermohonanPage mounted');
+  }, []);
+
+  // Fetch all permohonan from API
+  useEffect(() => {
+    const fetchPermohonan = async () => {
+      console.log('=== Starting fetch permohonan ===');
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const token = localStorage.getItem('token');
+        console.log('Token exists:', !!token);
+        console.log('Calling API: /api/permohonan/all');
+        
+        const response = await permohonanApi.getAll({ status: filterStatus || undefined });
+        console.log('API Response:', response);
+        console.log('API Response Data:', response.data);
+        
+        if (response.data.success) {
+          console.log('Data count:', response.data.data?.length);
+          setPermohonanList(response.data.data || []);
+        } else {
+          console.log('API returned success: false');
+          setError('Gagal memuat data');
+          setPermohonanList([]);
+        }
+      } catch (err: any) {
+        console.error('=== API Error ===');
+        console.error('Error:', err);
+        console.error('Error Response:', err.response);
+        console.error('Error Message:', err.message);
+        setError(err.response?.data?.message || err.message || 'Terjadi kesalahan');
+        setPermohonanList([]);
+      } finally {
+        setIsLoading(false);
+        console.log('=== Fetch complete ===');
+      }
+    };
+    
+    fetchPermohonan();
+  }, [filterStatus]);
+
+  // Export to CSV
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const now = new Date();
+      const dateStr = `${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`;
+      
+      // Header
+      let csvContent = 'LAPORAN DATA PERMOHONAN LAYANAN DESA LEGOK\n';
+      csvContent += `Tanggal Export: ${formatTanggal(now.toISOString())}\n`;
+      csvContent += `Filter Status: ${filterStatus || 'Semua'}\n`;
+      csvContent += `Total Data: ${filteredPermohonan.length} permohonan\n\n`;
+      
+      // Column headers
+      csvContent += 'No,No Registrasi,Nama Pemohon,NIK,Layanan,Keperluan,Status,Tanggal Pengajuan,Tanggal Update\n';
+      
+      // Data rows
+      filteredPermohonan.forEach((p, index) => {
+        const noReg = p.noRegistrasi || '-';
+        const nama = p.pemohon?.nama || '-';
+        const nik = p.pemohon?.nik || '-';
+        const layanan = p.layanan?.nama || '-';
+        const keperluan = (p.keperluan || '-').replace(/"/g, '""'); // Escape quotes
+        const status = p.status || '-';
+        const tanggalPengajuan = formatTanggal(p.createdAt);
+        const tanggalUpdate = formatTanggal(p.updatedAt);
+        
+        csvContent += `${index + 1},"${noReg}","${nama}","${nik}","${layanan}","${keperluan}","${status}","${tanggalPengajuan}","${tanggalUpdate}"\n`;
+      });
+      
+      // Create and download file
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Permohonan_${filterStatus || 'Semua'}_${dateStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Berhasil export ${filteredPermohonan.length} data permohonan`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Gagal mengexport data');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Filter locally for search (API already handles status filter)
+  const filteredPermohonan = permohonanList.filter((p) => {
+    if (!searchQuery) return true;
+    const search = searchQuery.toLowerCase();
+    return (
+      p.noRegistrasi?.toLowerCase().includes(search) ||
+      (p.layanan?.nama || p.layananNama || '').toLowerCase().includes(search) ||
+      (p.pemohon?.nama || p.userName || '').toLowerCase().includes(search)
+    );
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
@@ -77,15 +178,36 @@ export const AdminPermohonanPage: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           <input type="text" placeholder="Cari no. registrasi, layanan, atau nama..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500">
+        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setIsLoading(true); }} className="px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500">
           <option value="">Semua Status</option>
           {Object.entries(STATUS_CONFIG).map(([key, config]) => (<option key={key} value={key}>{config.label}</option>))}
         </select>
-        <Button variant="outline" leftIcon={<Download className="h-4 w-4" />}>Export</Button>
+        <Button 
+          variant="outline" 
+          leftIcon={<Download className="h-4 w-4" />}
+          onClick={handleExport}
+          isLoading={isExporting}
+          disabled={isLoading || filteredPermohonan.length === 0}
+        >
+          Export
+        </Button>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <Card padding="none">
+          {isLoading ? (
+            <div className="p-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto mb-4" />
+              <p className="text-gray-500">Memuat data permohonan...</p>
+            </div>
+          ) : error ? (
+            <div className="p-12 text-center">
+              <XCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+              <p className="text-red-600 font-medium mb-2">Error: {error}</p>
+              <p className="text-gray-500 text-sm mb-4">Pastikan backend berjalan di http://localhost:5000</p>
+              <Button onClick={() => window.location.reload()}>Coba Lagi</Button>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -102,8 +224,11 @@ export const AdminPermohonanPage: React.FC = () => {
                 {filteredPermohonan.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3"><p className="font-medium text-gray-900 text-sm">{item.noRegistrasi}</p></td>
-                    <td className="px-4 py-3"><p className="text-sm text-gray-900">{item.userName}</p><p className="text-xs text-gray-500">{item.userNik}</p></td>
-                    <td className="px-4 py-3"><p className="text-sm text-gray-900">{item.layananNama}</p></td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-900">{item.pemohon?.nama || item.userName || item.namaPemohon}</p>
+                      <p className="text-xs text-gray-500">{item.pemohon?.nik || item.userNik || item.nikPemohon}</p>
+                    </td>
+                    <td className="px-4 py-3"><p className="text-sm text-gray-900">{item.layanan?.nama || item.layananNama}</p></td>
                     <td className="px-4 py-3"><p className="text-sm text-gray-500">{formatTanggal(item.createdAt, 'dd MMM yyyy')}</p></td>
                     <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                     <td className="px-4 py-3 text-center"><Link to={`/admin/permohonan/${item.id}`}><Button variant="outline" size="sm" leftIcon={<Eye className="h-4 w-4" />}>Detail</Button></Link></td>
@@ -112,7 +237,8 @@ export const AdminPermohonanPage: React.FC = () => {
               </tbody>
             </table>
           </div>
-          {filteredPermohonan.length === 0 && (
+          )}
+          {!isLoading && filteredPermohonan.length === 0 && (
             <div className="p-12 text-center">
               <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Tidak Ada Permohonan</h3>
@@ -127,18 +253,48 @@ export const AdminPermohonanPage: React.FC = () => {
 
 export const AdminPermohonanDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [previewDocument, setPreviewDocument] = useState<Dokumen | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<any>(null);
   const [catatan, setCatatan] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [uploadedFile, setUploadedFile] = useState<{ file: File; preview: string } | null>(null);
+  const [permohonan, setPermohonan] = useState<any>(null);
 
   const { user } = useAuthStore();
-  const { getPermohonanById, updateStatus, updatePermohonan } = usePermohonanStore();
-  const permohonan = id ? getPermohonanById(id) : undefined;
+  const { getPermohonanById, updateStatus: updateStoreStatus, updatePermohonan } = usePermohonanStore();
+
+  // Fetch permohonan detail from API
+  useEffect(() => {
+    const fetchDetail = async () => {
+      if (!id) return;
+      
+      console.log('=== Fetching permohonan detail ===');
+      console.log('ID:', id);
+      console.log('User role:', user?.role);
+      
+      try {
+        const response = await permohonanApi.getById(id);
+        console.log('Detail API Response:', response.data);
+        if (response.data.success) {
+          setPermohonan(response.data.data);
+        } else {
+          console.error('API returned success: false');
+          toast.error(response.data.message || 'Gagal memuat detail');
+        }
+      } catch (error: any) {
+        console.error('Detail API Error:', error.response?.data || error.message);
+        toast.error(error.response?.data?.message || 'Gagal memuat detail permohonan');
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+    fetchDetail();
+  }, [id, user]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -200,12 +356,19 @@ export const AdminPermohonanDetailPage: React.FC = () => {
       return;
     }
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    updateStatus(id, nextStatus, catatan || `Status diubah menjadi ${nextStatus}`, user?.nama || 'Admin');
-    toast.success(`Permohonan berhasil di-${getApproveButtonText().toLowerCase()}`);
-    setShowApproveModal(false);
-    setIsLoading(false);
-    setCatatan('');
+    try {
+      const response = await permohonanApi.updateStatus(id, nextStatus, catatan || `Status diubah menjadi ${nextStatus}`);
+      if (response.data.success) {
+        setPermohonan({ ...permohonan, status: nextStatus });
+        toast.success(`Permohonan berhasil di-${getApproveButtonText().toLowerCase()}`);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal mengupdate status');
+    } finally {
+      setShowApproveModal(false);
+      setIsLoading(false);
+      setCatatan('');
+    }
   };
 
   const handleComplete = async () => {
@@ -215,23 +378,25 @@ export const AdminPermohonanDetailPage: React.FC = () => {
       return;
     }
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const now = new Date().toISOString();
-    const dokumenHasil: Dokumen = {
-      id: `hasil-${id}`,
-      nama: uploadedFile.file.name,
-      url: uploadedFile.preview,
-      type: uploadedFile.file.type,
-      size: uploadedFile.file.size,
-      uploadedAt: now,
-    };
-    updatePermohonan(id, { dokumenHasil });
-    updateStatus(id, 'selesai', catatan || 'Surat telah selesai dan dapat diunduh oleh pemohon', user?.nama || 'Admin');
-    toast.success('Permohonan berhasil diselesaikan! Dokumen surat telah diunggah.');
-    setShowCompleteModal(false);
-    setIsLoading(false);
-    setCatatan('');
-    setUploadedFile(null);
+    try {
+      const formData = new FormData();
+      formData.append('status', 'selesai');
+      formData.append('catatan', catatan || 'Surat telah selesai dan dapat diunduh oleh pemohon');
+      formData.append('dokumenHasil', uploadedFile.file);
+      
+      const response = await permohonanApi.updateStatus(id, 'selesai', catatan || 'Surat telah selesai', uploadedFile.file);
+      if (response.data.success) {
+        setPermohonan({ ...permohonan, status: 'selesai', dokumenHasil: response.data.data.dokumenHasil });
+        toast.success('Permohonan berhasil diselesaikan!');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal menyelesaikan permohonan');
+    } finally {
+      setShowCompleteModal(false);
+      setIsLoading(false);
+      setCatatan('');
+      setUploadedFile(null);
+    }
   };
 
   const handleReject = async () => {
@@ -241,29 +406,75 @@ export const AdminPermohonanDetailPage: React.FC = () => {
       return;
     }
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    updateStatus(id, 'ditolak', catatan, user?.nama || 'Admin');
-    toast.success('Permohonan ditolak');
-    setShowRejectModal(false);
-    setIsLoading(false);
-    setCatatan('');
+    try {
+      const response = await permohonanApi.updateStatus(id, 'ditolak', catatan);
+      if (response.data.success) {
+        setPermohonan({ ...permohonan, status: 'ditolak', catatan });
+        toast.success('Permohonan ditolak');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal menolak permohonan');
+    } finally {
+      setShowRejectModal(false);
+      setIsLoading(false);
+      setCatatan('');
+    }
   };
 
-  const handlePreviewDocument = (doc: Dokumen) => {
-    setPreviewDocument(doc);
+  const handlePreviewDocument = (doc: any) => {
+    console.log('Preview document:', doc);
+    if (!doc || !doc.url) {
+      toast.error('URL dokumen tidak tersedia');
+      return;
+    }
+    const fullUrl = doc.url.startsWith('http') ? doc.url : `${getApiBaseUrl()}${doc.url}`;
+    console.log('Full URL:', fullUrl);
+    setPreviewDocument({ ...doc, url: fullUrl, type: doc.type || 'application/pdf' });
     setShowPreviewModal(true);
   };
 
-  const handleDownloadDocument = (doc: Dokumen) => {
-    const link = document.createElement('a');
-    link.href = doc.url;
-    link.download = doc.nama;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`Mengunduh ${doc.nama}`);
+  const handleDownloadDocument = async (doc: any) => {
+    console.log('Download document:', doc);
+    if (!doc || !doc.url) {
+      toast.error('URL dokumen tidak tersedia');
+      return;
+    }
+    
+    try {
+      const fullUrl = doc.url.startsWith('http') ? doc.url : `${getApiBaseUrl()}${doc.url}`;
+      console.log('Full URL:', fullUrl);
+      
+      // Fetch file as blob
+      const response = await fetch(fullUrl);
+      if (!response.ok) throw new Error('Download failed');
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = doc.nama || 'dokumen';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Cleanup
+      window.URL.revokeObjectURL(blobUrl);
+      toast.success(`Berhasil mengunduh ${doc.nama || 'dokumen'}`);
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Gagal mengunduh dokumen');
+    }
   };
+
+  if (isLoadingData) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      </div>
+    );
+  }
 
   if (!permohonan) {
     return (
@@ -273,6 +484,13 @@ export const AdminPermohonanDetailPage: React.FC = () => {
       </div>
     );
   }
+
+  // Map data from API
+  const layananNama = permohonan.layanan?.nama || permohonan.layananNama;
+  const pemohonNama = permohonan.pemohon?.nama || permohonan.userName || permohonan.namaPemohon;
+  const pemohonNik = permohonan.pemohon?.nik || permohonan.userNik || permohonan.nikPemohon;
+  const dokumen = permohonan.dokumen || [];
+  const timeline = permohonan.timeline || [];
 
   const canProcess = ['diajukan', 'diverifikasi', 'diproses'].includes(permohonan.status);
 
@@ -288,7 +506,7 @@ export const AdminPermohonanDetailPage: React.FC = () => {
         <Card>
           <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-gray-900 mb-1">{permohonan.layananNama}</h1>
+              <h1 className="text-xl font-bold text-gray-900 mb-1">{layananNama}</h1>
               <p className="text-gray-500">{permohonan.noRegistrasi}</p>
             </div>
             <StatusBadge status={permohonan.status} size="lg" />
@@ -296,11 +514,11 @@ export const AdminPermohonanDetailPage: React.FC = () => {
           <div className="p-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0"><User className="h-5 w-5 text-gray-500" /></div>
-              <div><p className="text-sm text-gray-500">Pemohon</p><p className="font-medium text-gray-900">{permohonan.userName}</p><p className="text-xs text-gray-500">{permohonan.userNik}</p></div>
+              <div><p className="text-sm text-gray-500">Pemohon</p><p className="font-medium text-gray-900">{pemohonNama}</p><p className="text-xs text-gray-500">{pemohonNik}</p></div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0"><FileText className="h-5 w-5 text-gray-500" /></div>
-              <div><p className="text-sm text-gray-500">Layanan</p><p className="font-medium text-gray-900">{permohonan.layananNama}</p></div>
+              <div><p className="text-sm text-gray-500">Layanan</p><p className="font-medium text-gray-900">{layananNama}</p></div>
             </div>
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0"><Calendar className="h-5 w-5 text-gray-500" /></div>
@@ -325,10 +543,13 @@ export const AdminPermohonanDetailPage: React.FC = () => {
           <Card>
             <div className="p-6 border-b border-gray-100"><h2 className="font-semibold text-gray-900">Timeline</h2></div>
             <div className="p-6">
-              {permohonan.timeline.map((item, index) => {
-                const Icon = statusIcons[item.status];
-                const config = STATUS_CONFIG[item.status];
-                const isLast = index === permohonan.timeline.length - 1;
+              {timeline.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">Belum ada timeline</div>
+              ) : (
+              timeline.map((item: any, index: number) => {
+                const Icon = statusIcons[item.status as StatusPermohonan] || Clock;
+                const config = STATUS_CONFIG[item.status as StatusPermohonan] || STATUS_CONFIG.diajukan;
+                const isLast = index === timeline.length - 1;
                 return (
                   <div key={index} className="flex gap-4 pb-6 last:pb-0">
                     <div className="flex flex-col items-center">
@@ -343,7 +564,8 @@ export const AdminPermohonanDetailPage: React.FC = () => {
                     </div>
                   </div>
                 );
-              })}
+              })
+              )}
             </div>
           </Card>
         </motion.div>
@@ -355,18 +577,17 @@ export const AdminPermohonanDetailPage: React.FC = () => {
               <p className="text-sm text-gray-500 mt-1">Dokumen yang diunggah oleh pemohon</p>
             </div>
             <div className="p-6 space-y-3">
-              {permohonan.dokumen.length === 0 ? (
+              {dokumen.length === 0 ? (
                 <div className="text-center py-8"><FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-500">Tidak ada dokumen</p></div>
               ) : (
-                permohonan.dokumen.map((doc) => (
+                dokumen.map((doc: any) => (
                   <div key={doc.id} className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                    <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-gray-200"><FileIcon type={doc.type} className="h-6 w-6" /></div>
+                    <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-gray-200"><FileIcon type={doc.type || 'application/octet-stream'} className="h-6 w-6" /></div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{doc.nama}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span>
-                        <span className="text-xs text-gray-300">•</span>
-                        <span className="text-xs text-gray-500">{formatTanggal(doc.uploadedAt, 'dd MMM yyyy, HH:mm')}</span>
+                        {doc.size && <><span className="text-xs text-gray-500">{formatFileSize(doc.size)}</span><span className="text-xs text-gray-300">•</span></>}
+                        <span className="text-xs text-gray-500">{doc.uploadedAt ? formatTanggal(doc.uploadedAt, 'dd MMM yyyy, HH:mm') : ''}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -386,21 +607,31 @@ export const AdminPermohonanDetailPage: React.FC = () => {
                 <p className="text-sm text-gray-500 mt-1">Surat yang telah diterbitkan</p>
               </div>
               <div className="p-6">
-                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl border border-green-200">
-                  <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-green-200"><FileIcon type={permohonan.dokumenHasil.type} className="h-6 w-6" /></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{permohonan.dokumenHasil.nama}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{formatFileSize(permohonan.dokumenHasil.size)}</span>
-                      <span className="text-xs text-gray-300">•</span>
-                      <span className="text-xs text-gray-500">{formatTanggal(permohonan.dokumenHasil.uploadedAt, 'dd MMM yyyy, HH:mm')}</span>
+                {(() => {
+                  // Handle both string URL and object format
+                  const dokHasil = typeof permohonan.dokumenHasil === 'string' 
+                    ? { nama: 'Dokumen Hasil', url: permohonan.dokumenHasil, type: permohonan.dokumenHasil.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg' }
+                    : permohonan.dokumenHasil;
+                  
+                  return (
+                    <div className="flex items-center gap-3 p-4 bg-green-50 rounded-xl border border-green-200">
+                      <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center border border-green-200">
+                        <FileIcon type={dokHasil.type || 'application/pdf'} className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{dokHasil.nama || 'Dokumen Hasil'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {dokHasil.size && <><span className="text-xs text-gray-500">{formatFileSize(dokHasil.size)}</span><span className="text-xs text-gray-300">•</span></>}
+                          <span className="text-xs text-gray-500">{dokHasil.uploadedAt ? formatTanggal(dokHasil.uploadedAt, 'dd MMM yyyy, HH:mm') : ''}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handlePreviewDocument(dokHasil)} title="Lihat Dokumen"><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDownloadDocument(dokHasil)} title="Download Dokumen"><Download className="h-4 w-4" /></Button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handlePreviewDocument(permohonan.dokumenHasil!)} title="Lihat Dokumen"><Eye className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDownloadDocument(permohonan.dokumenHasil!)} title="Download Dokumen"><Download className="h-4 w-4" /></Button>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </Card>
           )}

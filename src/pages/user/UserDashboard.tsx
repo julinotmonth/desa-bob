@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -7,26 +7,51 @@ import {
   Download,
   Clock,
   CheckCircle,
+  Loader2,
 } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import { StatusBadge } from '../../components/ui/Badge';
 import { useAuthStore, usePermohonanStore } from '../../store';
 import { formatTanggal, formatTanggalRelatif } from '../../utils';
 import { mockNotifications } from '../../services/mockData';
+import { permohonanApi, getApiBaseUrl } from '../../services/api';
+import toast from 'react-hot-toast';
 
 const UserDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { getPermohonanByUser } = usePermohonanStore();
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [permohonanList, setPermohonanList] = useState<any[]>([]);
 
-  // Get permohonan untuk user ini dari global store
-  const userPermohonan = user ? getPermohonanByUser(user.id) : [];
-  const permohonanAktif = userPermohonan.filter((p) => !['selesai', 'ditolak'].includes(p.status));
-  const permohonanSelesai = userPermohonan.filter((p) => p.status === 'selesai');
+  // Fetch user permohonan from API
+  useEffect(() => {
+    const fetchPermohonan = async () => {
+      try {
+        const response = await permohonanApi.getUserPermohonan();
+        if (response.data.success) {
+          setPermohonanList(response.data.data);
+        }
+      } catch (error) {
+        console.log('Using fallback data');
+        // Fallback to store data
+        const storeData = user ? getPermohonanByUser(user.id) : [];
+        setPermohonanList(storeData);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchPermohonan();
+  }, [user]);
+
+  // Calculate statistics from API data
+  const permohonanAktif = permohonanList.filter((p) => !['selesai', 'ditolak'].includes(p.status));
+  const permohonanSelesai = permohonanList.filter((p) => p.status === 'selesai');
 
   const stats = [
     {
       label: 'Total Permohonan',
-      value: userPermohonan.length,
+      value: permohonanList.length,
       icon: FileText,
       color: 'blue',
       bgColor: 'bg-blue-100',
@@ -52,10 +77,44 @@ const UserDashboard: React.FC = () => {
 
   const quickLinks = [
     { label: 'Surat Domisili', href: '/user/pengajuan?layanan=1', icon: '🏠' },
-    { label: 'Surat Usaha', href: '/user/pengajuan?layanan=2', icon: '💼' },
-    { label: 'Pengantar KTP', href: '/user/pengajuan?layanan=6', icon: '🪪' },
-    { label: 'Pengantar KK', href: '/user/pengajuan?layanan=7', icon: '👨‍👩‍👧‍👦' },
+    { label: 'Surat Usaha', href: '/user/pengajuan?layanan=3', icon: '💼' },
+    { label: 'Pengantar KTP', href: '/user/pengajuan?layanan=4', icon: '🪪' },
+    { label: 'Pengantar KK', href: '/user/pengajuan?layanan=5', icon: '👨‍👩‍👧‍👦' },
   ];
+
+  const handleDownload = async (item: any) => {
+    if (item.dokumenHasil) {
+      try {
+        const url = item.dokumenHasil.startsWith('http') 
+          ? item.dokumenHasil 
+          : `${getApiBaseUrl()}${item.dokumenHasil}`;
+        
+        // Fetch file as blob
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Download failed');
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        // Create download link
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `Dokumen-${item.noRegistrasi || 'hasil'}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Cleanup
+        window.URL.revokeObjectURL(blobUrl);
+        toast.success('Berhasil mengunduh dokumen');
+      } catch (error) {
+        console.error('Download error:', error);
+        toast.error('Gagal mengunduh dokumen');
+      }
+    } else {
+      toast.error('Dokumen belum tersedia');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -104,7 +163,11 @@ const UserDashboard: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">{stat.label}</p>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  {isLoading ? (
+                    <div className="h-8 w-12 bg-gray-200 animate-pulse rounded mt-1"></div>
+                  ) : (
+                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  )}
                 </div>
               </div>
             </Card>
@@ -156,30 +219,38 @@ const UserDashboard: React.FC = () => {
               </Link>
             </div>
             <div className="divide-y divide-gray-100">
-              {userPermohonan.slice(0, 3).map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/user/riwayat/${item.id}`}
-                  className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-gray-500" />
+              {isLoading ? (
+                <div className="p-8 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto" />
+                  <p className="text-gray-500 mt-2">Memuat data...</p>
+                </div>
+              ) : permohonanList.length > 0 ? (
+                permohonanList.slice(0, 3).map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/user/riwayat/${item.id}`}
+                    className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-gray-500" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">
+                          {item.layanan?.nama || item.layananNama}
+                        </p>
+                        <p className="text-xs text-gray-500">{item.noRegistrasi}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">{item.layananNama}</p>
-                      <p className="text-xs text-gray-500">{item.noRegistrasi}</p>
+                    <div className="text-right">
+                      <StatusBadge status={item.status} size="sm" />
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatTanggalRelatif(item.updatedAt)}
+                      </p>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <StatusBadge status={item.status} size="sm" />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {formatTanggalRelatif(item.updatedAt)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-              {userPermohonan.length === 0 && (
+                  </Link>
+                ))
+              ) : (
                 <div className="p-8 text-center">
                   <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500">Belum ada permohonan</p>
@@ -251,25 +322,37 @@ const UserDashboard: React.FC = () => {
               <h2 className="font-semibold text-gray-900">Dokumen Siap Diunduh</h2>
             </div>
             <div className="divide-y divide-gray-100">
-              {permohonanSelesai.map((item) => (
-                <div key={item.id} className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">{item.layananNama}</p>
-                      <p className="text-xs text-gray-500">
-                        Selesai {formatTanggal(item.updatedAt, 'dd MMM yyyy')}
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" leftIcon={<Download className="h-4 w-4" />}>
-                    Download
-                  </Button>
+              {isLoading ? (
+                <div className="p-8 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400 mx-auto" />
                 </div>
-              ))}
-              {permohonanSelesai.length === 0 && (
+              ) : permohonanSelesai.length > 0 ? (
+                permohonanSelesai.map((item) => (
+                  <div key={item.id} className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">
+                          {item.layanan?.nama || item.layananNama}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Selesai {formatTanggal(item.updatedAt, 'dd MMM yyyy')}
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      leftIcon={<Download className="h-4 w-4" />}
+                      onClick={() => handleDownload(item)}
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))
+              ) : (
                 <div className="p-8 text-center">
                   <Download className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 text-sm">Belum ada dokumen yang siap diunduh</p>

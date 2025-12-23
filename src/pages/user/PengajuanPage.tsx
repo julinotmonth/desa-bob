@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -18,6 +18,7 @@ import { LAYANAN_LIST, MAX_FILE_SIZE } from '../../constants';
 import { useAuthStore, usePermohonanStore } from '../../store';
 import { formatFileSize, generateNoRegistrasi } from '../../utils';
 import { Layanan, Permohonan } from '../../types';
+import { permohonanApi, layananApi } from '../../services/api';
 
 const steps = [
   { id: 1, title: 'Pilih Layanan' },
@@ -40,6 +41,7 @@ const PengajuanPage: React.FC = () => {
   const initialLayananId = searchParams.get('layanan');
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [layananList, setLayananList] = useState<Layanan[]>(LAYANAN_LIST);
   const [selectedLayanan, setSelectedLayanan] = useState<Layanan | null>(
     initialLayananId ? LAYANAN_LIST.find((l) => l.id === Number(initialLayananId)) || null : null
   );
@@ -48,6 +50,21 @@ const PengajuanPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [noRegistrasi, setNoRegistrasi] = useState('');
+
+  // Fetch layanan from API
+  useEffect(() => {
+    const fetchLayanan = async () => {
+      try {
+        const response = await layananApi.getAll();
+        if (response.data.success && response.data.data.length > 0) {
+          setLayananList(response.data.data);
+        }
+      } catch (error) {
+        console.log('Using fallback layanan data');
+      }
+    };
+    fetchLayanan();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => ({
@@ -105,50 +122,32 @@ const PengajuanPage: React.FC = () => {
     
     setIsSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Create FormData for API request
+      const formData = new FormData();
+      formData.append('layananId', selectedLayanan.id.toString());
+      formData.append('keperluan', keterangan);
+      formData.append('namaPemohon', user.nama);
+      formData.append('nikPemohon', user.nik);
+      formData.append('emailPemohon', user.email);
+      formData.append('noHpPemohon', user.noHp || '');
+      formData.append('alamatPemohon', user.alamat || '');
       
-      const newNoRegistrasi = generateNoRegistrasi();
-      const now = new Date().toISOString();
-      const newId = `p-${Date.now()}`;
+      // Add files
+      uploadedFiles.forEach((item) => {
+        formData.append('dokumen', item.file);
+      });
+
+      const response = await permohonanApi.create(formData);
       
-      // Buat objek permohonan baru
-      const newPermohonan: Permohonan = {
-        id: newId,
-        noRegistrasi: newNoRegistrasi,
-        userId: user.id,
-        userName: user.nama,
-        userNik: user.nik,
-        layananId: selectedLayanan.id,
-        layananNama: selectedLayanan.nama,
-        status: 'diajukan',
-        dokumen: uploadedFiles.map((f, index) => ({
-          id: `doc-${newId}-${index}`,
-          nama: f.file.name,
-          url: f.preview,
-          type: f.file.type,
-          size: f.file.size,
-          uploadedAt: now,
-        })),
-        timeline: [
-          {
-            status: 'diajukan',
-            tanggal: now,
-            catatan: keterangan || 'Permohonan berhasil diajukan',
-          },
-        ],
-        catatan: keterangan,
-        createdAt: now,
-        updatedAt: now,
-      };
-      
-      // Tambahkan ke global store (akan muncul di admin)
-      addPermohonan(newPermohonan);
-      
-      setNoRegistrasi(newNoRegistrasi);
-      setIsSuccess(true);
-      toast.success('Permohonan berhasil diajukan!');
-    } catch (error) {
-      toast.error('Gagal mengajukan permohonan');
+      if (response.data.success) {
+        const { noRegistrasi: newNoRegistrasi } = response.data.data;
+        setNoRegistrasi(newNoRegistrasi);
+        setIsSuccess(true);
+        toast.success('Permohonan berhasil diajukan!');
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Gagal mengajukan permohonan';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -251,7 +250,7 @@ const PengajuanPage: React.FC = () => {
                 <p className="text-gray-500 mb-6">Pilih layanan yang ingin Anda ajukan</p>
 
                 <div className="grid sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                  {LAYANAN_LIST.map((layanan) => (
+                  {layananList.map((layanan) => (
                     <button
                       key={layanan.id}
                       onClick={() => setSelectedLayanan(layanan)}

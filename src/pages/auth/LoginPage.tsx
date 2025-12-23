@@ -10,11 +10,16 @@ import { Button, Card } from '../../components/ui';
 import Input from '../../components/ui/Input';
 import { APP_NAME } from '../../constants';
 import { useAuthStore } from '../../store';
-import { mockUser, mockAdmin } from '../../services/mockData';
-import { LoginFormData } from '../../types';
+import { authApi } from '../../services/api';
+
+interface LoginFormData {
+  email: string;
+  password: string;
+  rememberMe?: boolean;
+}
 
 const loginSchema = z.object({
-  nikOrEmail: z.string().min(1, 'NIK atau Email harus diisi'),
+  email: z.string().min(1, 'Email harus diisi').email('Format email tidak valid'),
   password: z.string().min(6, 'Password minimal 6 karakter'),
   rememberMe: z.boolean().optional(),
 });
@@ -37,20 +42,26 @@ const LoginPage: React.FC = () => {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await authApi.login({
+        email: data.email,
+        password: data.password,
+      });
 
-      // Demo login - check for admin or user
-      if (data.nikOrEmail === 'admin@desalegok.go.id' || data.nikOrEmail === 'admin') {
-        login(mockAdmin, 'mock-admin-token');
-        toast.success('Login berhasil sebagai Admin!');
-        navigate('/admin/dashboard');
-      } else {
-        login(mockUser, 'mock-user-token');
+      if (response.data.success) {
+        const { user, token } = response.data.data;
+        login(user, token);
         toast.success('Login berhasil!');
-        navigate(from);
+        
+        // Redirect based on role
+        if (user.role === 'admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate(from);
+        }
       }
-    } catch (error) {
-      toast.error('Login gagal. Silakan coba lagi.');
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Login gagal. Silakan coba lagi.';
+      toast.error(message);
     }
   };
 
@@ -78,17 +89,18 @@ const LoginPage: React.FC = () => {
             {/* Demo Info */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
               <p className="text-sm text-blue-800 font-medium mb-2">Demo Login:</p>
-              <p className="text-xs text-blue-600">User: <strong>user@email.com</strong> / <strong>123456</strong></p>
-              <p className="text-xs text-blue-600">Admin: <strong>admin</strong> / <strong>123456</strong></p>
+              <p className="text-xs text-blue-600">User: <strong>warga@desa.id</strong> / <strong>123456</strong></p>
+              <p className="text-xs text-blue-600">Admin: <strong>admin@desa.id</strong> / <strong>admin123</strong></p>
             </div>
 
             {/* Form */}
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <Input
-                label="NIK atau Email"
-                placeholder="Masukkan NIK atau Email"
-                error={errors.nikOrEmail?.message}
-                {...register('nikOrEmail')}
+                label="Email"
+                type="email"
+                placeholder="Masukkan Email"
+                error={errors.email?.message}
+                {...register('email')}
               />
 
               <div>

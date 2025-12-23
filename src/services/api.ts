@@ -2,8 +2,8 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { useAuthStore } from '../store';
 import toast from 'react-hot-toast';
 
-// Base API URL - sesuaikan dengan backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Base API URL - sesuaikan dengan backend SIPEDES
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Create Axios instance
 const api: AxiosInstance = axios.create({
@@ -33,10 +33,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const message =
-      (error.response?.data as { message?: string })?.message ||
-      error.message ||
-      'Terjadi kesalahan';
+    const responseData = error.response?.data as { message?: string; code?: string };
+    const message = responseData?.message || error.message || 'Terjadi kesalahan';
 
     // Handle 401 Unauthorized
     if (error.response?.status === 401) {
@@ -45,14 +43,15 @@ api.interceptors.response.use(
       window.location.href = '/login';
     }
 
-    // Handle 403 Forbidden
+    // Handle 403 Forbidden - check if account inactive
     if (error.response?.status === 403) {
-      toast.error('Anda tidak memiliki akses ke halaman ini');
-    }
-
-    // Handle 404 Not Found
-    if (error.response?.status === 404) {
-      toast.error('Data tidak ditemukan');
+      if (responseData?.code === 'ACCOUNT_INACTIVE') {
+        useAuthStore.getState().logout();
+        toast.error(message);
+        window.location.href = '/login';
+      } else {
+        toast.error('Anda tidak memiliki akses ke halaman ini');
+      }
     }
 
     // Handle 500 Server Error
@@ -71,143 +70,166 @@ api.interceptors.response.use(
 
 export default api;
 
-// Auth API
+// ==================== AUTH API ====================
 export const authApi = {
-  login: (data: { nikOrEmail: string; password: string }) =>
+  login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
+  
   register: (data: {
     nama: string;
     nik: string;
     email: string;
-    noHp: string;
-    alamat: string;
+    noHp?: string;
+    alamat?: string;
     password: string;
   }) => api.post('/auth/register', data),
-  logout: () => api.post('/auth/logout'),
-  me: () => api.get('/auth/me'),
-  forgotPassword: (email: string) =>
-    api.post('/auth/forgot-password', { email }),
-  resetPassword: (data: { token: string; password: string }) =>
-    api.post('/auth/reset-password', data),
-};
-
-// User API
-export const userApi = {
-  getProfile: () => api.get('/user/profile'),
+  
+  getProfile: () => api.get('/auth/profile'),
+  
   updateProfile: (data: Partial<{
     nama: string;
     email: string;
     noHp: string;
     alamat: string;
-  }>) => api.put('/user/profile', data),
+  }>) => api.put('/auth/profile', data),
+  
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
-    api.put('/user/password', data),
-  uploadAvatar: (file: File) => {
-    const formData = new FormData();
-    formData.append('avatar', file);
-    return api.post('/user/avatar', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
+    api.put('/auth/change-password', data),
 };
 
-// Layanan API
+// ==================== LAYANAN API ====================
 export const layananApi = {
   getAll: () => api.get('/layanan'),
-  getById: (id: number) => api.get(`/layanan/${id}`),
-  getBySlug: (slug: string) => api.get(`/layanan/slug/${slug}`),
+  
+  getBySlug: (slug: string) => api.get(`/layanan/${slug}`),
+  
+  // Admin
+  create: (data: {
+    nama: string;
+    slug: string;
+    deskripsi?: string;
+    icon?: string;
+    persyaratan?: string[];
+    estimasiHari?: number;
+    biaya?: string;
+    kategori?: string;
+  }) => api.post('/layanan', data),
+  
+  update: (id: number, data: Partial<{
+    nama: string;
+    deskripsi: string;
+    icon: string;
+    persyaratan: string[];
+    estimasiHari: number;
+    biaya: string;
+    kategori: string;
+  }>) => api.put(`/layanan/${id}`, data),
+  
+  delete: (id: number) => api.delete(`/layanan/${id}`),
 };
 
-// Permohonan API
+// ==================== PERMOHONAN API ====================
 export const permohonanApi = {
-  // User
+  // User - Create permohonan
   create: (data: FormData) =>
     api.post('/permohonan', data, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  getUserPermohonan: (params?: {
-    status?: string;
-    page?: number;
-    limit?: number;
-  }) => api.get('/permohonan/user', { params }),
+  
+  // User - Get user's permohonan
+  getUserPermohonan: () => api.get('/permohonan/user'),
+  
+  // User - Get permohonan detail
   getById: (id: string) => api.get(`/permohonan/${id}`),
-  getByNoRegistrasi: (noRegistrasi: string) =>
-    api.get(`/permohonan/registrasi/${noRegistrasi}`),
-  downloadDokumen: (id: string) =>
-    api.get(`/permohonan/${id}/download`, { responseType: 'blob' }),
-
-  // Admin
+  
+  // Public - Check status by registration number
+  checkStatus: (noRegistrasi: string) => api.get(`/permohonan/check/${noRegistrasi}`),
+  
+  // Admin - Get all permohonan
   getAll: (params?: {
     status?: string;
-    layananId?: number;
     search?: string;
     page?: number;
     limit?: number;
-    tanggalMulai?: string;
-    tanggalAkhir?: string;
-  }) => api.get('/admin/permohonan', { params }),
-  verify: (id: string, data: { status: string; catatan?: string }) =>
-    api.put(`/admin/permohonan/${id}/verify`, data),
-  process: (id: string, data: { status: string; catatan?: string }) =>
-    api.put(`/admin/permohonan/${id}/process`, data),
-  complete: (id: string, data: FormData) =>
-    api.put(`/admin/permohonan/${id}/complete`, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  reject: (id: string, data: { catatan: string }) =>
-    api.put(`/admin/permohonan/${id}/reject`, data),
+  }) => api.get('/permohonan/all', { params }),
+  
+  // Admin - Get statistics
+  getStatistics: () => api.get('/permohonan/stats/summary'),
+  
+  // Admin - Update status
+  updateStatus: (id: string, status: string, catatan?: string, dokumenHasil?: File) => {
+    if (dokumenHasil) {
+      const formData = new FormData();
+      formData.append('status', status);
+      if (catatan) formData.append('catatan', catatan);
+      formData.append('dokumenHasil', dokumenHasil);
+      return api.put(`/permohonan/${id}/status`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.put(`/permohonan/${id}/status`, { status, catatan });
+  },
 };
 
-// Berita API
+// ==================== BERITA API ====================
 export const beritaApi = {
-  getAll: (params?: {
-    kategori?: string;
-    status?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) => api.get('/berita', { params }),
+  // Public - Get published berita
   getPublished: (params?: {
     kategori?: string;
     search?: string;
     page?: number;
     limit?: number;
   }) => api.get('/berita/published', { params }),
-  getById: (id: string) => api.get(`/berita/${id}`),
+  
+  // Public - Get berita by slug
   getBySlug: (slug: string) => api.get(`/berita/slug/${slug}`),
-  create: (data: FormData) =>
-    api.post('/admin/berita', data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  update: (id: string, data: FormData) =>
-    api.put(`/admin/berita/${id}`, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
-  delete: (id: string) => api.delete(`/admin/berita/${id}`),
-  publish: (id: string) => api.put(`/admin/berita/${id}/publish`),
-  unpublish: (id: string) => api.put(`/admin/berita/${id}/unpublish`),
-};
-
-// Kontak API
-export const kontakApi = {
-  create: (data: {
-    nama: string;
-    email: string;
-    jenis: string;
-    pesan: string;
-  }) => api.post('/kontak', data),
+  
+  // Admin - Get all berita (including drafts)
   getAll: (params?: {
     status?: string;
-    jenis?: string;
+    kategori?: string;
+    search?: string;
     page?: number;
     limit?: number;
-  }) => api.get('/admin/kontak', { params }),
-  reply: (id: string, data: { balasan: string }) =>
-    api.put(`/admin/kontak/${id}/reply`, data),
-  close: (id: string) => api.put(`/admin/kontak/${id}/close`),
+  }) => api.get('/berita', { params }),
+  
+  // Admin - Get berita by ID
+  getById: (id: string) => api.get(`/berita/${id}`),
+  
+  // Admin - Create berita
+  create: (data: {
+    judul: string;
+    ringkasan: string;
+    konten: string;
+    thumbnail?: string;
+    kategori?: string;
+    status?: 'draft' | 'published';
+  }) => api.post('/berita', data),
+  
+  // Admin - Update berita
+  update: (id: string, data: Partial<{
+    judul: string;
+    ringkasan: string;
+    konten: string;
+    thumbnail: string;
+    kategori: string;
+    status: 'draft' | 'published';
+  }>) => api.put(`/berita/${id}`, data),
+  
+  // Admin - Delete berita
+  delete: (id: string) => api.delete(`/berita/${id}`),
+  
+  // Admin - Upload thumbnail
+  uploadThumbnail: (file: File) => {
+    const formData = new FormData();
+    formData.append('thumbnail', file);
+    return api.post('/berita/upload-thumbnail', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
-// Admin User API
+// ==================== USER API (Admin) ====================
 export const adminUserApi = {
   getAll: (params?: {
     role?: string;
@@ -215,41 +237,71 @@ export const adminUserApi = {
     search?: string;
     page?: number;
     limit?: number;
-  }) => api.get('/admin/users', { params }),
-  getById: (id: string) => api.get(`/admin/users/${id}`),
-  update: (id: string, data: Partial<{ nama: string; email: string; role: string }>) =>
-    api.put(`/admin/users/${id}`, data),
-  activate: (id: string) => api.put(`/admin/users/${id}/activate`),
-  deactivate: (id: string) => api.put(`/admin/users/${id}/deactivate`),
-  delete: (id: string) => api.delete(`/admin/users/${id}`),
+  }) => api.get('/users', { params }),
+  
+  getById: (id: string) => api.get(`/users/${id}`),
+  
+  getStats: () => api.get('/users/stats'),
+  
+  create: (data: {
+    nik: string;
+    nama: string;
+    email: string;
+    password: string;
+    noHp?: string;
+    alamat?: string;
+    role?: 'user' | 'admin';
+  }) => api.post('/users', data),
+  
+  update: (id: string, data: Partial<{
+    nama: string;
+    email: string;
+    noHp: string;
+    alamat: string;
+    role: 'user' | 'admin';
+    password: string;
+  }>) => api.put(`/users/${id}`, data),
+  
+  toggleStatus: (id: string) => api.patch(`/users/${id}/toggle-status`),
+  
+  delete: (id: string) => api.delete(`/users/${id}`),
 };
 
-// Statistics API
+// ==================== STATISTICS API ====================
 export const statisticsApi = {
-  getDashboard: () => api.get('/admin/statistics/dashboard'),
-  getPermohonanStats: (params?: {
-    periode?: string;
-    tanggalMulai?: string;
-    tanggalAkhir?: string;
-  }) => api.get('/admin/statistics/permohonan', { params }),
-  getLayananStats: () => api.get('/admin/statistics/layanan'),
-  exportReport: (params: {
-    type: string;
-    format: 'pdf' | 'excel';
-    tanggalMulai?: string;
-    tanggalAkhir?: string;
-  }) =>
-    api.get('/admin/statistics/export', {
-      params,
-      responseType: 'blob',
-    }),
+  getDashboard: async () => {
+    // Combine multiple API calls for dashboard stats
+    const [permohonanStats, userStats] = await Promise.all([
+      permohonanApi.getStatistics(),
+      adminUserApi.getStats(),
+    ]);
+    
+    return {
+      data: {
+        permohonan: permohonanStats.data.data,
+        users: userStats.data.data,
+      },
+    };
+  },
 };
 
-// Notification API
-export const notificationApi = {
-  getAll: (params?: { page?: number; limit?: number }) =>
+// ==================== NOTIFICATIONS API ====================
+export const notificationsApi = {
+  getAll: (params?: { limit?: number; unreadOnly?: boolean }) => 
     api.get('/notifications', { params }),
-  markAsRead: (id: string) => api.put(`/notifications/${id}/read`),
-  markAllAsRead: () => api.put('/notifications/read-all'),
-  delete: (id: string) => api.delete(`/notifications/${id}`),
+  
+  markAsRead: (id: string) => 
+    api.patch(`/notifications/${id}/read`),
+  
+  markAllAsRead: () => 
+    api.patch('/notifications/read-all'),
+  
+  delete: (id: string) => 
+    api.delete(`/notifications/${id}`),
+  
+  clearAll: () => 
+    api.delete('/notifications'),
 };
+
+// Export API base URL for file uploads
+export const getApiBaseUrl = () => API_BASE_URL.replace('/api', '');

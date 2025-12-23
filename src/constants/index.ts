@@ -19,8 +19,8 @@ export const CONTACT_INFO = {
     minggu: 'Minggu & Hari Libur: Tutup',
   },
   koordinat: {
-    lat: -7.6195,
-    lng: 112.6513,
+    lat: -7.2853167859545716,
+    lng: 112.7627805565462,
   },
 };
 

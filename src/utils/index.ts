@@ -9,21 +9,39 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Format tanggal ke format Indonesia
-export function formatTanggal(tanggal: string | Date, formatStr: string = 'dd MMMM yyyy'): string {
-  const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
-  return format(date, formatStr, { locale: id });
+export function formatTanggal(tanggal: string | Date | null | undefined, formatStr: string = 'dd MMMM yyyy'): string {
+  if (!tanggal) return '-';
+  try {
+    const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
+    if (isNaN(date.getTime())) return '-';
+    return format(date, formatStr, { locale: id });
+  } catch (error) {
+    return '-';
+  }
 }
 
 // Format tanggal relatif (contoh: "2 jam yang lalu")
-export function formatTanggalRelatif(tanggal: string | Date): string {
-  const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
-  return formatDistanceToNow(date, { addSuffix: true, locale: id });
+export function formatTanggalRelatif(tanggal: string | Date | null | undefined): string {
+  if (!tanggal) return '-';
+  try {
+    const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
+    if (isNaN(date.getTime())) return '-';
+    return formatDistanceToNow(date, { addSuffix: true, locale: id });
+  } catch (error) {
+    return '-';
+  }
 }
 
 // Format tanggal dan waktu
-export function formatTanggalWaktu(tanggal: string | Date): string {
-  const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
-  return format(date, 'dd MMM yyyy, HH:mm', { locale: id });
+export function formatTanggalWaktu(tanggal: string | Date | null | undefined): string {
+  if (!tanggal) return '-';
+  try {
+    const date = typeof tanggal === 'string' ? parseISO(tanggal) : tanggal;
+    if (isNaN(date.getTime())) return '-';
+    return format(date, 'dd MMM yyyy, HH:mm', { locale: id });
+  } catch (error) {
+    return '-';
+  }
 }
 
 // Generate nomor registrasi
@@ -145,5 +163,3 @@ export function getStatusColorClass(status: string): string {
   };
   return colors[status] || 'bg-gray-100 text-gray-800';
 }
-
-

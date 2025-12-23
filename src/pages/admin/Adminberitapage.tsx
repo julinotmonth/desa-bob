@@ -1,17 +1,25 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import {
   Search, Plus, FileText, Edit, Trash2, Eye, ChevronLeft, Image,
-  Calendar, User, Upload, X, ExternalLink,
+  Calendar, User, Upload, X, ExternalLink, Loader2,
 } from 'lucide-react';
 import { Button, Card, Modal, Badge } from '../../components/ui';
 import Input, { Textarea, Select } from '../../components/ui/Input';
 import { useBeritaStore } from '../../store';
 import { formatTanggal } from '../../utils';
 import { Berita } from '../../types';
+import { beritaApi, getApiBaseUrl } from '../../services/api';
+
+// Helper function to get full thumbnail URL
+const getThumbnailUrl = (thumbnail: string | undefined | null): string | null => {
+  if (!thumbnail) return null;
+  if (thumbnail.startsWith('http') || thumbnail.startsWith('blob:')) return thumbnail;
+  return `${getApiBaseUrl()}${thumbnail}`;
+};
 
 const kategoriOptions = [
   { value: 'Pengumuman', label: 'Pengumuman' },
@@ -34,24 +42,59 @@ export const AdminBeritaPage: React.FC = () => {
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; berita: Berita | null }>({ open: false, berita: null });
   const [previewModal, setPreviewModal] = useState<{ open: boolean; berita: Berita | null }>({ open: false, berita: null });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [beritaList, setBeritaList] = useState<Berita[]>([]);
 
-  const { getAllBerita, deleteBerita } = useBeritaStore();
-  const allBerita = getAllBerita();
+  const { getAllBerita, deleteBerita: deleteBeritaStore } = useBeritaStore();
 
-  const filteredBerita = allBerita.filter((b) => {
+  // Fetch berita from API
+  const fetchBerita = async () => {
+    setIsLoading(true);
+    try {
+      const response = await beritaApi.getAll({
+        kategori: filterKategori || undefined,
+        search: searchQuery || undefined,
+        limit: 100,
+      });
+      if (response.data.success) {
+        setBeritaList(response.data.data);
+      }
+    } catch (error) {
+      console.log('Using fallback berita from store');
+      setBeritaList(getAllBerita());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBerita();
+  }, [filterKategori]);
+
+  // Filter locally for search (real-time)
+  const filteredBerita = beritaList.filter((b) => {
     const matchSearch = b.judul.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchKategori = !filterKategori || b.kategori === filterKategori;
-    return matchSearch && matchKategori;
+    return matchSearch;
   });
 
   const handleDelete = async () => {
     if (!deleteModal.berita) return;
     setIsDeleting(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    deleteBerita(deleteModal.berita.id);
-    toast.success('Berita berhasil dihapus');
-    setDeleteModal({ open: false, berita: null });
-    setIsDeleting(false);
+    
+    try {
+      await beritaApi.delete(deleteModal.berita.id);
+      toast.success('Berita berhasil dihapus');
+      // Refresh list
+      fetchBerita();
+    } catch (error) {
+      // Fallback to store
+      deleteBeritaStore(deleteModal.berita.id);
+      setBeritaList(prev => prev.filter(b => b.id !== deleteModal.berita?.id));
+      toast.success('Berita berhasil dihapus');
+    } finally {
+      setDeleteModal({ open: false, berita: null });
+      setIsDeleting(false);
+    }
   };
 
   const handlePreview = (berita: Berita) => {
@@ -97,24 +140,49 @@ export const AdminBeritaPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredBerita.map((item) => (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto mb-2" />
+                      <p className="text-gray-500">Memuat berita...</p>
+                    </td>
+                  </tr>
+                ) : filteredBerita.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <FileText className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-500">Belum ada berita</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBerita.map((item) => (
                   <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-16 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="w-16 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
                           {item.thumbnail ? (
-                            <img src={item.thumbnail} alt={item.judul} className="w-full h-full object-cover" />
+                            <img 
+                              src={getThumbnailUrl(item.thumbnail) || ''} 
+                              alt={item.judul} 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => { 
+                                const parent = (e.target as HTMLImageElement).parentElement;
+                                if (parent) {
+                                  parent.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>';
+                                }
+                              }} 
+                            />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center"><Image className="h-5 w-5 text-gray-400" /></div>
+                            <Image className="h-5 w-5 text-gray-400" />
                           )}
                         </div>
                         <div className="min-w-0">
                           <p className="font-medium text-gray-900 text-sm truncate max-w-xs">{item.judul}</p>
-                          <p className="text-xs text-gray-500">Oleh: {item.penulis}</p>
+                          <p className="text-xs text-gray-500">Oleh: {item.penulis || 'Admin'}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3"><Badge variant="info">{item.kategori}</Badge></td>
+                    <td className="px-4 py-3"><Badge variant="info">{item.kategori || 'Umum'}</Badge></td>
                     <td className="px-4 py-3"><p className="text-sm text-gray-500">{formatTanggal(item.createdAt, 'dd MMM yyyy')}</p></td>
                     <td className="px-4 py-3">
                       <Badge variant={item.status === 'published' ? 'success' : 'gray'}>
@@ -129,7 +197,8 @@ export const AdminBeritaPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </div>
@@ -154,7 +223,7 @@ export const AdminBeritaPage: React.FC = () => {
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
               <div className="w-16 h-12 bg-gray-200 rounded-lg overflow-hidden">
                 {deleteModal.berita.thumbnail ? (
-                  <img src={deleteModal.berita.thumbnail} alt="" className="w-full h-full object-cover" />
+                  <img src={getThumbnailUrl(deleteModal.berita.thumbnail) || ''} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center"><Image className="h-5 w-5 text-gray-400" /></div>
                 )}
@@ -173,18 +242,29 @@ export const AdminBeritaPage: React.FC = () => {
       </Modal>
 
       {/* Preview Modal */}
-      <Modal open={previewModal.open} onOpenChange={(open) => setPreviewModal({ ...previewModal, open })} title="Preview Berita" size="full">
+      <Modal open={previewModal.open} onOpenChange={(open) => setPreviewModal({ ...previewModal, open })} title="Preview Berita" size="lg">
         {previewModal.berita && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* Thumbnail */}
-            {previewModal.berita.thumbnail && (
-              <div className="w-full h-48 sm:h-64 bg-gray-100 rounded-xl overflow-hidden">
-                <img src={previewModal.berita.thumbnail} alt={previewModal.berita.judul} className="w-full h-full object-cover" />
+            {previewModal.berita.thumbnail ? (
+              <div className="w-full h-48 sm:h-56 bg-gray-100 rounded-xl overflow-hidden">
+                <img 
+                  src={getThumbnailUrl(previewModal.berita.thumbnail) || ''} 
+                  alt={previewModal.berita.judul} 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="w-full h-48 sm:h-56 bg-gradient-to-br from-primary-100 to-primary-200 rounded-xl flex items-center justify-center">
+                <FileText className="h-16 w-16 text-primary-400" />
               </div>
             )}
             
             {/* Meta Info */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={previewModal.berita.status === 'published' ? 'success' : 'gray'}>
                 {previewModal.berita.status === 'published' ? 'Published' : 'Draft'}
               </Badge>
@@ -198,24 +278,26 @@ export const AdminBeritaPage: React.FC = () => {
             </div>
 
             {/* Title */}
-            <h2 className="text-xl font-bold text-gray-900">{previewModal.berita.judul}</h2>
+            <h2 className="text-xl font-bold text-gray-900 break-words">{previewModal.berita.judul}</h2>
             
             {/* Ringkasan */}
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-sm font-medium text-gray-500 mb-1">Ringkasan:</p>
-              <p className="text-gray-700">{previewModal.berita.ringkasan}</p>
+              <p className="text-sm font-medium text-gray-500 mb-2">Ringkasan:</p>
+              <p className="text-gray-700 break-words">{previewModal.berita.ringkasan}</p>
             </div>
 
             {/* Konten */}
             <div>
               <p className="text-sm font-medium text-gray-500 mb-2">Konten:</p>
-              <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-                {previewModal.berita.konten}
+              <div className="bg-white border border-gray-200 rounded-xl p-4 max-h-64 overflow-y-auto">
+                <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap break-words">
+                  {previewModal.berita.konten}
+                </div>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t">
+            <div className="flex flex-wrap gap-3 pt-4 border-t">
               <Button variant="outline" onClick={() => navigate(`/admin/berita/edit/${previewModal.berita?.id}`)} leftIcon={<Edit className="h-4 w-4" />}>
                 Edit Berita
               </Button>
@@ -241,19 +323,58 @@ export const AdminBeritaFormPage: React.FC = () => {
   const isEdit = Boolean(id);
 
   const { getBeritaById, addBerita, updateBerita } = useBeritaStore();
-  const existingBerita = isEdit && id ? getBeritaById(id) : null;
 
   const [formData, setFormData] = useState({
-    judul: existingBerita?.judul || '',
-    kategori: existingBerita?.kategori || '',
-    ringkasan: existingBerita?.ringkasan || '',
-    konten: existingBerita?.konten || '',
-    thumbnail: existingBerita?.thumbnail || '',
-    status: existingBerita?.status || 'draft',
+    judul: '',
+    kategori: '',
+    ringkasan: '',
+    konten: '',
+    thumbnail: '',
+    status: 'draft',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(isEdit);
   const [uploadedImage, setUploadedImage] = useState<{ file: File; preview: string } | null>(null);
+
+  // Fetch berita data when editing
+  useEffect(() => {
+    if (isEdit && id) {
+      const fetchBerita = async () => {
+        setIsLoadingData(true);
+        try {
+          const response = await beritaApi.getById(id);
+          if (response.data.success) {
+            const data = response.data.data;
+            setFormData({
+              judul: data.judul || '',
+              kategori: data.kategori || '',
+              ringkasan: data.ringkasan || '',
+              konten: data.konten || '',
+              thumbnail: data.thumbnail || '',
+              status: data.status || 'draft',
+            });
+          }
+        } catch (error) {
+          console.log('Fallback to store');
+          const storeData = getBeritaById(id);
+          if (storeData) {
+            setFormData({
+              judul: storeData.judul || '',
+              kategori: storeData.kategori || '',
+              ringkasan: storeData.ringkasan || '',
+              konten: storeData.konten || '',
+              thumbnail: storeData.thumbnail || '',
+              status: storeData.status || 'draft',
+            });
+          }
+        } finally {
+          setIsLoadingData(false);
+        }
+      };
+      fetchBerita();
+    }
+  }, [id, isEdit]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -287,45 +408,92 @@ export const AdminBeritaFormPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Show loading when fetching data for edit
+  if (isLoadingData) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        <span className="ml-3 text-gray-500">Memuat data berita...</span>
+      </div>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1500));
-
-    const now = new Date().toISOString();
-    const slug = generateSlug(formData.judul);
-
-    if (isEdit && id) {
-      updateBerita(id, {
-        ...formData,
-        slug,
-        status: formData.status as 'draft' | 'published',
-        publishedAt: formData.status === 'published' ? now : undefined,
-      });
-      toast.success('Berita berhasil diupdate');
-    } else {
-      const newBerita: Berita = {
-        id: `berita-${Date.now()}`,
+    
+    try {
+      const now = new Date().toISOString();
+      const slug = generateSlug(formData.judul);
+      
+      // Don't send blob URLs to API - they won't work on server
+      // Only send real URLs (http/https) or empty
+      const thumbnailToSend = formData.thumbnail && !formData.thumbnail.startsWith('blob:') 
+        ? formData.thumbnail 
+        : undefined;
+      
+      // Try API first
+      const apiData = {
         judul: formData.judul,
-        slug,
         ringkasan: formData.ringkasan,
         konten: formData.konten,
-        thumbnail: formData.thumbnail,
+        thumbnail: thumbnailToSend,
         kategori: formData.kategori,
         status: formData.status as 'draft' | 'published',
-        penulis: 'Admin Desa',
-        createdAt: now,
-        updatedAt: now,
-        publishedAt: formData.status === 'published' ? now : undefined,
       };
-      addBerita(newBerita);
-      toast.success('Berita berhasil ditambahkan');
-    }
 
-    navigate('/admin/berita');
-    setIsSubmitting(false);
+      if (isEdit && id) {
+        try {
+          await beritaApi.update(id, apiData);
+          toast.success('Berita berhasil diupdate');
+        } catch (apiError) {
+          console.error('API error:', apiError);
+          // Fallback to store
+          updateBerita(id, {
+            ...formData,
+            slug,
+            thumbnail: thumbnailToSend || formData.thumbnail,
+            status: formData.status as 'draft' | 'published',
+            publishedAt: formData.status === 'published' ? now : undefined,
+          });
+          toast.success('Berita berhasil diupdate');
+        }
+      } else {
+        try {
+          const response = await beritaApi.create(apiData);
+          console.log('Create response:', response.data);
+          toast.success('Berita berhasil ditambahkan');
+        } catch (apiError) {
+          console.error('API error:', apiError);
+          // Fallback to store
+          const newBerita: Berita = {
+            id: `berita-${Date.now()}`,
+            judul: formData.judul,
+            slug,
+            ringkasan: formData.ringkasan,
+            konten: formData.konten,
+            thumbnail: thumbnailToSend || formData.thumbnail,
+            kategori: formData.kategori,
+            status: formData.status as 'draft' | 'published',
+            penulis: 'Admin Desa',
+            createdAt: now,
+            updatedAt: now,
+            publishedAt: formData.status === 'published' ? now : undefined,
+          };
+          addBerita(newBerita);
+          toast.success('Berita berhasil ditambahkan');
+        }
+      }
+
+      navigate('/admin/berita');
+    } catch (error) {
+      console.error('Error submitting berita:', error);
+      toast.error('Gagal menyimpan berita');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -395,7 +563,15 @@ export const AdminBeritaFormPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="relative">
-                  <img src={formData.thumbnail} alt="Thumbnail" className="w-full h-48 object-cover rounded-xl" />
+                  <img 
+                    src={getThumbnailUrl(formData.thumbnail) || formData.thumbnail} 
+                    alt="Thumbnail" 
+                    className="w-full h-48 object-cover rounded-xl bg-gray-100"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '';
+                      (e.target as HTMLImageElement).className = 'hidden';
+                    }}
+                  />
                   <button type="button" onClick={removeImage} className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
                     <X className="h-4 w-4" />
                   </button>
@@ -404,7 +580,7 @@ export const AdminBeritaFormPage: React.FC = () => {
               <p className="text-sm text-gray-500 mt-2">Atau masukkan URL gambar:</p>
               <input
                 type="text"
-                value={formData.thumbnail}
+                value={formData.thumbnail.startsWith('blob:') ? '' : formData.thumbnail}
                 onChange={(e) => setFormData({ ...formData, thumbnail: e.target.value })}
                 placeholder="https://example.com/gambar.jpg"
                 className="w-full mt-1 px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"

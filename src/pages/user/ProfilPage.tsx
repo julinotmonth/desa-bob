@@ -21,6 +21,7 @@ import {
 import { Button, Card, Modal } from '../../components/ui';
 import { useAuthStore } from '../../store';
 import { formatTanggal } from '../../utils';
+import { authApi } from '../../services/api';
 
 const ProfilPage: React.FC = () => {
   const { user, updateUser } = useAuthStore();
@@ -62,18 +63,25 @@ const ProfilPage: React.FC = () => {
     }
 
     setIsSaving(true);
-    await new Promise(r => setTimeout(r, 1000));
-    
-    updateUser({
-      nama: formData.nama,
-      email: formData.email,
-      noHp: formData.noHp,
-      alamat: formData.alamat,
-    });
-    
-    toast.success('Profil berhasil diperbarui');
-    setIsEditing(false);
-    setIsSaving(false);
+    try {
+      const response = await authApi.updateProfile({
+        nama: formData.nama,
+        email: formData.email,
+        noHp: formData.noHp,
+        alamat: formData.alamat,
+      });
+
+      if (response.data.success) {
+        updateUser(response.data.data);
+        toast.success('Profil berhasil diperbarui');
+        setIsEditing(false);
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Gagal memperbarui profil';
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -95,12 +103,23 @@ const ProfilPage: React.FC = () => {
     }
 
     setIsSaving(true);
-    await new Promise(r => setTimeout(r, 1000));
-    
-    toast.success('Password berhasil diubah');
-    setIsChangingPassword(false);
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    setIsSaving(false);
+    try {
+      const response = await authApi.changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+
+      if (response.data.success) {
+        toast.success('Password berhasil diubah');
+        setIsChangingPassword(false);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Gagal mengubah password';
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancelEdit = () => {

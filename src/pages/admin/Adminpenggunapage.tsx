@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import {
   Search,
-  Plus,
   Users,
-  Edit,
   Trash2,
   Eye,
   Shield,
@@ -14,16 +12,16 @@ import {
   Phone,
   MapPin,
   Calendar,
-  MoreVertical,
   UserCheck,
   UserX,
+  Loader2,
+  FileText,
 } from 'lucide-react';
 import { Button, Card, Modal, Badge } from '../../components/ui';
-import Input, { Select } from '../../components/ui/Input';
 import { formatTanggal } from '../../utils';
+import { adminUserApi } from '../../services/api';
 
-// Mock Users Data
-interface MockUser {
+interface UserData {
   id: string;
   nama: string;
   email: string;
@@ -31,92 +29,11 @@ interface MockUser {
   noHp: string;
   alamat: string;
   role: 'user' | 'admin';
+  status: 'active' | 'inactive';
   avatar: string;
   createdAt: string;
-  status: 'active' | 'inactive';
   totalPermohonan: number;
 }
-
-const mockUsers: MockUser[] = [
-  {
-    id: '1',
-    nama: 'Ahmad Sudrajat',
-    email: 'ahmad@email.com',
-    nik: '3507123456789012',
-    noHp: '081234567890',
-    alamat: 'Dusun Krajan RT 01 RW 02, Desa Legok',
-    role: 'user',
-    avatar: '',
-    createdAt: '2024-01-15T08:00:00Z',
-    status: 'active',
-    totalPermohonan: 5,
-  },
-  {
-    id: '2',
-    nama: 'Siti Aminah',
-    email: 'siti@email.com',
-    nik: '3507123456789013',
-    noHp: '081234567891',
-    alamat: 'Dusun Krajan RT 02 RW 01, Desa Legok',
-    role: 'user',
-    avatar: '',
-    createdAt: '2024-02-20T10:30:00Z',
-    status: 'active',
-    totalPermohonan: 3,
-  },
-  {
-    id: '3',
-    nama: 'Bambang Wijaya',
-    email: 'bambang@email.com',
-    nik: '3507123456789014',
-    noHp: '081234567892',
-    alamat: 'Dusun Sumber RT 03 RW 02, Desa Legok',
-    role: 'user',
-    avatar: '',
-    createdAt: '2024-03-10T14:15:00Z',
-    status: 'inactive',
-    totalPermohonan: 1,
-  },
-  {
-    id: '4',
-    nama: 'Dewi Lestari',
-    email: 'dewi@email.com',
-    nik: '3507123456789015',
-    noHp: '081234567893',
-    alamat: 'Dusun Sumber RT 01 RW 03, Desa Legok',
-    role: 'user',
-    avatar: '',
-    createdAt: '2024-03-25T09:00:00Z',
-    status: 'active',
-    totalPermohonan: 8,
-  },
-  {
-    id: '5',
-    nama: 'Eko Prasetyo',
-    email: 'eko@email.com',
-    nik: '3507123456789016',
-    noHp: '081234567894',
-    alamat: 'Dusun Krajan RT 04 RW 01, Desa Legok',
-    role: 'user',
-    avatar: '',
-    createdAt: '2024-04-05T11:30:00Z',
-    status: 'active',
-    totalPermohonan: 2,
-  },
-  {
-    id: 'admin1',
-    nama: 'Budi Santoso',
-    email: 'admin@desalegok.go.id',
-    nik: '3507123456789000',
-    noHp: '081234567800',
-    alamat: 'Kantor Desa Legok',
-    role: 'admin',
-    avatar: '',
-    createdAt: '2023-01-01T00:00:00Z',
-    status: 'active',
-    totalPermohonan: 0,
-  },
-];
 
 const roleOptions = [
   { value: '', label: 'Semua Role' },
@@ -130,50 +47,129 @@ const statusOptions = [
   { value: 'inactive', label: 'Nonaktif' },
 ];
 
-type UserWithStatus = MockUser;
-
 const AdminPenggunaPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [detailModal, setDetailModal] = useState<{ open: boolean; user: UserWithStatus | null }>({
+  const [isLoading, setIsLoading] = useState(true);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    admin: 0,
+  });
+  
+  const [detailModal, setDetailModal] = useState<{ open: boolean; user: UserData | null }>({
     open: false,
     user: null,
   });
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: UserWithStatus | null }>({
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; user: UserData | null }>({
     open: false,
     user: null,
   });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isToggling, setIsToggling] = useState<string | null>(null);
 
-  const filteredUsers = mockUsers.filter((u) => {
+  // Fetch users from API
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    try {
+      const response = await adminUserApi.getAll({
+        role: filterRole || undefined,
+        status: filterStatus || undefined,
+        search: searchQuery || undefined,
+      });
+      
+      if (response.data.success) {
+        setUsers(response.data.data);
+        
+        // Calculate stats from data
+        const allUsers = response.data.data;
+        setStats({
+          total: allUsers.length,
+          active: allUsers.filter((u: UserData) => u.status === 'active' || !u.status).length,
+          inactive: allUsers.filter((u: UserData) => u.status === 'inactive').length,
+          admin: allUsers.filter((u: UserData) => u.role === 'admin').length,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast.error('Gagal memuat data pengguna');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch stats
+  const fetchStats = async () => {
+    try {
+      const response = await adminUserApi.getStats();
+      if (response.data.success) {
+        const data = response.data.data;
+        setStats({
+          total: data.totalUsers,
+          active: data.totalActive,
+          inactive: data.totalInactive,
+          admin: data.totalAdmin,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+    fetchStats();
+  }, [filterRole, filterStatus]);
+
+  // Filter locally for search (real-time)
+  const filteredUsers = users.filter((u) => {
     const matchSearch =
       u.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.nik.includes(searchQuery);
-    const matchRole = !filterRole || u.role === filterRole;
-    const matchStatus = !filterStatus || u.status === filterStatus;
-    return matchSearch && matchRole && matchStatus;
+    return matchSearch;
   });
 
-  const stats = {
-    total: mockUsers.length,
-    active: mockUsers.filter((u) => u.status === 'active').length,
-    inactive: mockUsers.filter((u) => u.status === 'inactive').length,
-    admin: mockUsers.filter((u) => u.role === 'admin').length,
-  };
-
   const handleDelete = async () => {
+    if (!deleteModal.user) return;
     setIsDeleting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success('Pengguna berhasil dihapus');
-    setDeleteModal({ open: false, user: null });
-    setIsDeleting(false);
+    
+    try {
+      await adminUserApi.delete(deleteModal.user.id);
+      toast.success('Pengguna berhasil dihapus');
+      fetchUsers();
+      fetchStats();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal menghapus pengguna');
+    } finally {
+      setDeleteModal({ open: false, user: null });
+      setIsDeleting(false);
+    }
   };
 
-  const handleToggleStatus = async (user: UserWithStatus) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    toast.success(`Status pengguna ${user.status === 'active' ? 'dinonaktifkan' : 'diaktifkan'}`);
+  const handleToggleStatus = async (user: UserData) => {
+    setIsToggling(user.id);
+    
+    try {
+      const response = await adminUserApi.toggleStatus(user.id);
+      if (response.data.success) {
+        toast.success(response.data.message);
+        // Update local state
+        setUsers(prev => prev.map(u => 
+          u.id === user.id 
+            ? { ...u, status: response.data.data.status }
+            : u
+        ));
+        fetchStats();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Gagal mengubah status pengguna');
+    } finally {
+      setIsToggling(null);
+    }
   };
 
   return (
@@ -198,7 +194,11 @@ const AdminPenggunaPage: React.FC = () => {
                   <stat.icon className={`h-5 w-5 ${stat.textColor}`} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  {isLoading ? (
+                    <div className="h-6 w-8 bg-gray-200 animate-pulse rounded" />
+                  ) : (
+                    <p className="text-xl font-bold text-gray-900">{stat.value}</p>
+                  )}
                   <p className="text-xs text-gray-500">{stat.label}</p>
                 </div>
               </div>
@@ -256,73 +256,89 @@ const AdminPenggunaPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                          <span className="text-primary-600 font-semibold text-sm">
-                            {user.nama.split(' ').map((n) => n[0]).join('').substring(0, 2)}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900 text-sm">{user.nama}</p>
-                          <p className="text-xs text-gray-500">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-600 font-mono">{user.nik}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={user.role === 'admin' ? 'purple' : 'gray'}>
-                        {user.role === 'admin' ? 'Admin' : 'User'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={user.status === 'active' ? 'success' : 'error'}>
-                        {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-600">{user.totalPermohonan}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-500">{formatTanggal(user.createdAt, 'dd MMM yyyy')}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => setDetailModal({ open: true, user })}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={user.status === 'active' ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}
-                          onClick={() => handleToggleStatus(user)}
-                        >
-                          {user.status === 'active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                        </Button>
-                        {user.role !== 'admin' && (
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteModal({ open: true, user })}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto mb-2" />
+                      <p className="text-gray-500">Memuat data pengguna...</p>
                     </td>
                   </tr>
-                ))}
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center">
+                      <Users className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-500">Tidak ada pengguna ditemukan</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                            <span className="text-primary-600 font-semibold text-sm">
+                              {user.nama.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{user.nama}</p>
+                            <p className="text-xs text-gray-500">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-600 font-mono">{user.nik}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={user.role === 'admin' ? 'purple' : 'gray'}>
+                          {user.role === 'admin' ? 'Admin' : 'User'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={user.status === 'inactive' ? 'error' : 'success'}>
+                          {user.status === 'inactive' ? 'Nonaktif' : 'Aktif'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-600">{user.totalPermohonan || 0}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-500">{formatTanggal(user.createdAt, 'dd MMM yyyy')}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => setDetailModal({ open: true, user })} title="Detail">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={user.status === 'inactive' ? 'text-green-600 hover:bg-green-50' : 'text-red-600 hover:bg-red-50'}
+                            onClick={() => handleToggleStatus(user)}
+                            disabled={isToggling === user.id}
+                            title={user.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'}
+                          >
+                            {isToggling === user.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : user.status === 'inactive' ? (
+                              <UserCheck className="h-4 w-4" />
+                            ) : (
+                              <UserX className="h-4 w-4" />
+                            )}
+                          </Button>
+                          {user.role !== 'admin' && (
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteModal({ open: true, user })} title="Hapus">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-
-          {filteredUsers.length === 0 && (
-            <div className="p-12 text-center">
-              <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Tidak Ada Pengguna</h3>
-              <p className="text-gray-500">Tidak ditemukan pengguna yang sesuai dengan filter</p>
-            </div>
-          )}
         </Card>
       </motion.div>
 
@@ -333,7 +349,7 @@ const AdminPenggunaPage: React.FC = () => {
             <div className="flex items-center gap-4 pb-4 border-b border-gray-100">
               <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
                 <span className="text-primary-600 font-bold text-xl">
-                  {detailModal.user.nama.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                  {detailModal.user.nama.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()}
                 </span>
               </div>
               <div>
@@ -342,8 +358,8 @@ const AdminPenggunaPage: React.FC = () => {
                   <Badge variant={detailModal.user.role === 'admin' ? 'purple' : 'gray'}>
                     {detailModal.user.role === 'admin' ? 'Admin' : 'User'}
                   </Badge>
-                  <Badge variant={detailModal.user.status === 'active' ? 'success' : 'error'}>
-                    {detailModal.user.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                  <Badge variant={detailModal.user.status === 'inactive' ? 'error' : 'success'}>
+                    {detailModal.user.status === 'inactive' ? 'Nonaktif' : 'Aktif'}
                   </Badge>
                 </div>
               </div>
@@ -368,14 +384,21 @@ const AdminPenggunaPage: React.FC = () => {
                 <Phone className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-xs text-gray-500">No. HP</p>
-                  <p className="text-sm font-medium text-gray-900">{detailModal.user.noHp}</p>
+                  <p className="text-sm font-medium text-gray-900">{detailModal.user.noHp || '-'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-gray-400" />
                 <div>
                   <p className="text-xs text-gray-500">Alamat</p>
-                  <p className="text-sm font-medium text-gray-900">{detailModal.user.alamat}</p>
+                  <p className="text-sm font-medium text-gray-900">{detailModal.user.alamat || '-'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Total Permohonan</p>
+                  <p className="text-sm font-medium text-gray-900">{detailModal.user.totalPermohonan || 0} permohonan</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -398,10 +421,21 @@ const AdminPenggunaPage: React.FC = () => {
 
       {/* Delete Modal */}
       <Modal open={deleteModal.open} onOpenChange={(open) => setDeleteModal({ ...deleteModal, open })} title="Hapus Pengguna" size="sm">
-        <p className="text-gray-500 mb-4">Apakah Anda yakin ingin menghapus pengguna "<strong>{deleteModal.user?.nama}</strong>"? Semua data permohonan pengguna ini juga akan dihapus.</p>
-        <div className="flex gap-3">
-          <Button variant="ghost" onClick={() => setDeleteModal({ open: false, user: null })} className="flex-1">Batal</Button>
-          <Button variant="danger" onClick={handleDelete} isLoading={isDeleting} className="flex-1">Hapus</Button>
+        <div className="space-y-4">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-800">
+              Apakah Anda yakin ingin menghapus pengguna "<strong>{deleteModal.user?.nama}</strong>"? 
+              Semua data permohonan pengguna ini juga akan dihapus.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" onClick={() => setDeleteModal({ open: false, user: null })} className="flex-1">
+              Batal
+            </Button>
+            <Button variant="danger" onClick={handleDelete} isLoading={isDeleting} className="flex-1">
+              Hapus
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

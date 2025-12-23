@@ -9,7 +9,19 @@ import { Eye, EyeOff, UserPlus, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Button, Card } from '../../components/ui';
 import Input, { Textarea } from '../../components/ui/Input';
 import { APP_NAME } from '../../constants';
-import { RegisterFormData } from '../../types';
+import { authApi } from '../../services/api';
+import { useAuthStore } from '../../store';
+
+interface RegisterFormData {
+  nama: string;
+  nik: string;
+  email: string;
+  noHp: string;
+  alamat: string;
+  password: string;
+  konfirmasiPassword: string;
+  setuju: boolean;
+}
 
 const registerSchema = z
   .object({
@@ -32,6 +44,7 @@ const RegisterPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuthStore();
 
   const {
     register,
@@ -43,12 +56,25 @@ const RegisterPage: React.FC = () => {
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      console.log('Register data:', data);
-      setIsSuccess(true);
-      toast.success('Pendaftaran berhasil!');
-    } catch (error) {
-      toast.error('Pendaftaran gagal. Silakan coba lagi.');
+      const response = await authApi.register({
+        nama: data.nama,
+        nik: data.nik,
+        email: data.email,
+        noHp: data.noHp,
+        alamat: data.alamat,
+        password: data.password,
+      });
+
+      if (response.data.success) {
+        // Auto login after registration
+        const { user, token } = response.data.data;
+        login(user, token);
+        setIsSuccess(true);
+        toast.success('Pendaftaran berhasil!');
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Pendaftaran gagal. Silakan coba lagi.';
+      toast.error(message);
     }
   };
 
